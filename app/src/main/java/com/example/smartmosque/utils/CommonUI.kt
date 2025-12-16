@@ -43,6 +43,7 @@ fun UpcommingEventBox(navController: NavController, authViewModel: AuthViewModel
     var eventList by remember { mutableStateOf<List<Schedule>>(emptyList()) }
     var isLoading by remember { mutableStateOf(true) }
 
+    // --- FETCH DATA (Logic Tetap Sama) ---
     LaunchedEffect(Unit) {
         Firebase.firestore.collection("schedules").orderBy("date", Query.Direction.ASCENDING).addSnapshotListener { snapshot, _ ->
             isLoading = false
@@ -77,17 +78,17 @@ fun UpcommingEventBox(navController: NavController, authViewModel: AuthViewModel
         if (isLoading) {
             Box(Modifier.fillMaxWidth().height(100.dp), contentAlignment = Alignment.Center) { CircularProgressIndicator(color = GreenPrimary, modifier = Modifier.size(30.dp)) }
         } else if (eventList.isEmpty()) {
-            // EMPTY STATE YANG LEBIH CANTIK
+            // EMPTY STATE
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(120.dp) // Lebih tinggi
+                    .height(120.dp)
                     .background(White, RoundedCornerShape(16.dp)),
                 contentAlignment = Alignment.Center
             ) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     Icon(
-                        imageVector = Icons.Default.EventBusy, // Ikon Kalender Silang
+                        imageVector = Icons.Default.EventBusy,
                         contentDescription = null,
                         tint = Color.LightGray,
                         modifier = Modifier.size(32.dp)
@@ -100,16 +101,32 @@ fun UpcommingEventBox(navController: NavController, authViewModel: AuthViewModel
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 eventList.forEach { schedule ->
                     val isJoined = if (userId != null) schedule.participantsOnline.contains(userId) else false
+
                     PremiumScheduleCard(
                         schedule = schedule,
                         isJoined = isJoined,
                         onCardClick = { navController.navigate("schedule_detail/${schedule.id}") },
+
+                        // --- UPDATED LOGIC HERE (Menambah Toast) ---
                         onJoinClick = {
-                            if (userId == null) { Toast.makeText(context, "Silakan login dulu", Toast.LENGTH_SHORT).show() }
-                            else {
+                            if (userId == null) {
+                                Toast.makeText(context, "Silakan login dulu", Toast.LENGTH_SHORT).show()
+                            } else {
                                 val docRef = Firebase.firestore.collection("schedules").document(schedule.id)
-                                if (isJoined) docRef.update("participantsOnline", FieldValue.arrayRemove(userId))
-                                else docRef.update("participantsOnline", FieldValue.arrayUnion(userId))
+
+                                if (isJoined) {
+                                    // Logic Batal Gabung + Toast
+                                    docRef.update("participantsOnline", FieldValue.arrayRemove(userId))
+                                        .addOnSuccessListener {
+                                            Toast.makeText(context, "Anda membatalkan kehadiran", Toast.LENGTH_SHORT).show()
+                                        }
+                                } else {
+                                    // Logic Gabung + Toast
+                                    docRef.update("participantsOnline", FieldValue.arrayUnion(userId))
+                                        .addOnSuccessListener {
+                                            Toast.makeText(context, "Berhasil bergabung! Sampai jumpa di lokasi.", Toast.LENGTH_SHORT).show()
+                                        }
+                                }
                             }
                         }
                     )

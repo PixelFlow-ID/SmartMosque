@@ -3,30 +3,29 @@ package com.example.smartmosque.features.schedule
 import android.content.Intent
 import android.provider.CalendarContract
 import android.widget.Toast
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable // Pastikan ini ada
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.AccessTime
-import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.Event
-import androidx.compose.material.icons.filled.LocationOn
-import androidx.compose.material.icons.filled.Mic
+import androidx.compose.material.icons.filled.*
 import androidx.compose.material.icons.outlined.NotificationsActive
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -67,6 +66,10 @@ fun ScheduleScreen(
     var isLoading by remember { mutableStateOf(true) }
     var selectedFilter by remember { mutableStateOf("Akan Datang") }
 
+    // --- STATE UNTUK DIALOG KONFIRMASI HAPUS ---
+    var showDeleteDialog by remember { mutableStateOf(false) }
+    var scheduleToDelete by remember { mutableStateOf<Schedule?>(null) }
+
     // --- FETCH DATA ---
     LaunchedEffect(Unit) {
         Firebase.firestore.collection("schedules")
@@ -90,7 +93,9 @@ fun ScheduleScreen(
                                 category = doc.getString("category") ?: "Pengajian",
                                 date = doc.getTimestamp("date"),
                                 participantsOnline = onlineList,
-                                participantsOffline = offlineList
+                                participantsOffline = offlineList,
+                                streamingUrl = doc.getString("streamingUrl") ?: "",
+                                isPublished = doc.getBoolean("isPublished") ?: true
                             )
                         } catch (err: Exception) { null }
                     }
@@ -99,23 +104,23 @@ fun ScheduleScreen(
             }
     }
 
-    // --- LOGIKA FILTER DIPERBAIKI ---
-    val filteredList = remember(scheduleList, selectedFilter) {
-        // Toleransi waktu 3 JAM setelah jadwal dimulai masih dianggap "Akan Datang/Sedang Berlangsung"
-        // Logikanya: Event belum selesai kalau belum lewat 3 jam dari start time.
+    // --- LOGIKA FILTER ---
+    val filteredList = remember(scheduleList, selectedFilter, isAdmin) {
         val threeHoursInMillis = 3 * 60 * 60 * 1000
         val cutoffTime = Date(System.currentTimeMillis() - threeHoursInMillis)
 
-        when (selectedFilter) {
-            "Akan Datang" -> scheduleList.filter {
-                // Tampilkan jika tanggal jadwal LEBIH BESAR dari (Sekarang - 3 jam)
-                it.date?.toDate()?.after(cutoffTime) == true
-            }
-            "Selesai" -> scheduleList.filter {
-                // Tampilkan jika tanggal jadwal LEBIH KECIL dari (Sekarang - 3 jam)
-                it.date?.toDate()?.before(cutoffTime) == true
-            }.reversed()
+        // 1. Filter Waktu
+        val timeFiltered = when (selectedFilter) {
+            "Akan Datang" -> scheduleList.filter { it.date?.toDate()?.after(cutoffTime) == true }
+            "Selesai" -> scheduleList.filter { it.date?.toDate()?.before(cutoffTime) == true }.reversed()
             else -> scheduleList
+        }
+
+        // 2. Filter Status Publikasi (Admin lihat semua, User hanya published)
+        if (isAdmin) {
+            timeFiltered
+        } else {
+            timeFiltered.filter { it.isPublished }
         }
     }
 
@@ -136,93 +141,191 @@ fun ScheduleScreen(
         }
     ) { paddingValues ->
 
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(paddingValues)
-        ) {
-            ScheduleHeader()
+        Box(modifier = Modifier.fillMaxSize()) {
 
-            Column(modifier = Modifier.fillMaxSize()) {
-                // Filter Tabs
-                Row(modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    PremiumFilterButton("Akan Datang", selectedFilter) { selectedFilter = it }
-                    PremiumFilterButton("Selesai", selectedFilter) { selectedFilter = it }
-                    PremiumFilterButton("Semua", selectedFilter) { selectedFilter = it }
-                }
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(paddingValues)
+            ) {
+                ScheduleHeader()
 
-                Spacer(modifier = Modifier.height(20.dp))
-
-                if (isLoading) {
-                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        CircularProgressIndicator(color = EmeraldDeep)
+                Column(modifier = Modifier.fillMaxSize()) {
+                    // Filter Tabs
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        PremiumFilterButton("Akan Datang", selectedFilter) { selectedFilter = it }
+                        PremiumFilterButton("Selesai", selectedFilter) { selectedFilter = it }
+                        PremiumFilterButton("Semua", selectedFilter) { selectedFilter = it }
                     }
-                } else if (filteredList.isEmpty()) {
-                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            Icon(Icons.Default.Event, null, tint = Color.LightGray, modifier = Modifier.size(60.dp))
-                            Text("Tidak ada jadwal.", color = TextColorSecondary, fontSize = 14.sp)
+
+                    Spacer(modifier = Modifier.height(20.dp))
+
+                    if (isLoading) {
+                        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                            CircularProgressIndicator(color = EmeraldDeep)
+                        }
+                    } else if (filteredList.isEmpty()) {
+                        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                Icon(Icons.Default.Event, null, tint = Color.LightGray, modifier = Modifier.size(60.dp))
+                                Text("Tidak ada jadwal.", color = TextColorSecondary, fontSize = 14.sp)
+                            }
+                        }
+                    } else {
+                        LazyColumn(
+                            contentPadding = PaddingValues(start = 24.dp, end = 24.dp, bottom = 100.dp),
+                            verticalArrangement = Arrangement.spacedBy(16.dp)
+                        ) {
+                            items(filteredList) { schedule ->
+                                val isJoined = if (userId != null) schedule.participantsOnline.contains(userId) else false
+
+                                PremiumScheduleCard(
+                                    schedule = schedule,
+                                    isAdmin = isAdmin,
+                                    isJoined = isJoined,
+
+                                    // Aksi Navigasi Detail
+                                    onClick = { navController.navigate("schedule_detail/${schedule.id}") },
+
+                                    // Aksi Hapus
+                                    onDelete = {
+                                        scheduleToDelete = schedule
+                                        showDeleteDialog = true
+                                    },
+
+                                    // --- UPDATED: Aksi Edit Menuju Layar Edit ---
+                                    onEdit = {
+                                        // Navigasi ke Edit Screen dengan membawa ID Jadwal
+                                        navController.navigate("edit_schedule/${schedule.id}")
+                                    },
+                                    // -------------------------------------------
+
+                                    // Aksi Publish
+                                    onPublish = {
+                                        Firebase.firestore.collection("schedules").document(schedule.id)
+                                            .update("isPublished", true)
+                                            .addOnSuccessListener {
+                                                Toast.makeText(context, "Jadwal berhasil diterbitkan!", Toast.LENGTH_SHORT).show()
+                                            }
+                                    },
+
+                                    // Aksi Gabung / Batal
+                                    onJoinToggle = {
+                                        if (userId == null) {
+                                            Toast.makeText(context, "Silakan login untuk bergabung", Toast.LENGTH_SHORT).show()
+                                        } else {
+                                            val docRef = Firebase.firestore.collection("schedules").document(schedule.id)
+                                            if (isJoined) {
+                                                docRef.update("participantsOnline", FieldValue.arrayRemove(userId))
+                                                    .addOnSuccessListener { Toast.makeText(context, "Anda membatalkan kehadiran", Toast.LENGTH_SHORT).show() }
+                                            } else {
+                                                docRef.update("participantsOnline", FieldValue.arrayUnion(userId))
+                                                    .addOnSuccessListener { Toast.makeText(context, "Berhasil bergabung!", Toast.LENGTH_SHORT).show() }
+                                            }
+                                        }
+                                    },
+
+                                    // Aksi Kalender
+                                    onReminderClick = {
+                                        val date = schedule.date?.toDate()
+                                        if (date != null) {
+                                            try {
+                                                val intent = Intent(Intent.ACTION_INSERT).apply {
+                                                    data = CalendarContract.Events.CONTENT_URI
+                                                    putExtra(CalendarContract.Events.TITLE, schedule.title)
+                                                    putExtra(CalendarContract.Events.EVENT_LOCATION, schedule.location)
+                                                    putExtra(CalendarContract.Events.DESCRIPTION, "Pembicara: ${schedule.speaker}")
+                                                    putExtra(CalendarContract.EXTRA_EVENT_BEGIN_TIME, date.time)
+                                                    putExtra(CalendarContract.EXTRA_EVENT_END_TIME, date.time + (2 * 60 * 60 * 1000))
+                                                }
+                                                context.startActivity(intent)
+                                            } catch (e: Exception) {
+                                                Toast.makeText(context, "Aplikasi Kalender tidak ditemukan", Toast.LENGTH_SHORT).show()
+                                            }
+                                        }
+                                    }
+                                )
+                            }
                         }
                     }
-                } else {
-                    LazyColumn(
-                        contentPadding = PaddingValues(start = 24.dp, end = 24.dp, bottom = 100.dp),
-                        verticalArrangement = Arrangement.spacedBy(16.dp)
-                    ) {
-                        items(filteredList) { schedule ->
-                            val isJoined = if (userId != null) schedule.participantsOnline.contains(userId) else false
+                }
+            }
 
-                            PremiumScheduleCard(
-                                schedule = schedule,
-                                isAdmin = isAdmin,
-                                isJoined = isJoined,
-                                // 1. PERBAIKAN: Tambahkan onClick Naviagasi ke Detail
-                                onClick = {
-                                    // Asumsi route Anda: "schedule_detail/{scheduleId}"
-                                    // Sesuaikan string route ini dengan NavHost Anda
-                                    navController.navigate("schedule_detail/${schedule.id}")
-                                          },
-                                onDelete = {
-                                    Firebase.firestore.collection("schedules").document(schedule.id).delete()
-                                        .addOnSuccessListener { Toast.makeText(context, "Jadwal dihapus", Toast.LENGTH_SHORT).show() }
-                                },
-                                onJoinToggle = {
-                                    if (userId == null) {
-                                        Toast.makeText(context, "Silakan login untuk bergabung", Toast.LENGTH_SHORT).show()
-                                    } else {
-                                        val docRef = Firebase.firestore.collection("schedules").document(schedule.id)
-                                        if (isJoined) {
-                                            docRef.update("participantsOnline", FieldValue.arrayRemove(userId))
-                                        } else {
-                                            docRef.update("participantsOnline", FieldValue.arrayUnion(userId))
-                                            Toast.makeText(context, "Berhasil bergabung!", Toast.LENGTH_SHORT).show()
-                                        }
-                                    }
-                                },
-                                onReminderClick = {
-                                    val date = schedule.date?.toDate()
-                                    if (date != null) {
-                                        val intent = Intent(Intent.ACTION_INSERT).apply {
-                                            data = CalendarContract.Events.CONTENT_URI
-                                            putExtra(CalendarContract.Events.TITLE, schedule.title)
-                                            putExtra(CalendarContract.Events.EVENT_LOCATION, schedule.location)
-                                            putExtra(CalendarContract.Events.DESCRIPTION, "Pembicara: ${schedule.speaker}")
-                                            putExtra(CalendarContract.EXTRA_EVENT_BEGIN_TIME, date.time)
-                                            putExtra(CalendarContract.EXTRA_EVENT_END_TIME, date.time + (2 * 60 * 60 * 1000))
-                                        }
-                                        context.startActivity(intent)
-                                    }
-                                }
+            // --- DIALOG HAPUS ---
+            if (showDeleteDialog && scheduleToDelete != null) {
+                AlertDialog(
+                    onDismissRequest = {
+                        showDeleteDialog = false
+                        scheduleToDelete = null
+                    },
+                    containerColor = White,
+                    shape = RoundedCornerShape(28.dp),
+                    title = null,
+                    text = {
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Box(
+                                contentAlignment = Alignment.Center,
+                                modifier = Modifier
+                                    .size(80.dp)
+                                    .background(RedError.copy(alpha = 0.1f), CircleShape)
+                            ) {
+                                Icon(Icons.Default.Delete, null, tint = RedError, modifier = Modifier.size(40.dp))
+                            }
+                            Spacer(modifier = Modifier.height(20.dp))
+                            Text("Hapus Jadwal?", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = TextColorPrimary, textAlign = TextAlign.Center)
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Text(
+                                "Anda akan menghapus \"${scheduleToDelete?.title}\".\nData yang dihapus tidak dapat dikembalikan.",
+                                fontSize = 14.sp, color = TextColorSecondary, textAlign = TextAlign.Center, lineHeight = 20.sp
                             )
                         }
+                    },
+                    confirmButton = {
+                        Button(
+                            onClick = {
+                                scheduleToDelete?.let { item ->
+                                    Firebase.firestore.collection("schedules").document(item.id)
+                                        .delete()
+                                        .addOnSuccessListener {
+                                            Toast.makeText(context, "Jadwal berhasil dihapus", Toast.LENGTH_SHORT).show()
+                                        }
+                                }
+                                showDeleteDialog = false
+                                scheduleToDelete = null
+                            },
+                            colors = ButtonDefaults.buttonColors(containerColor = RedError),
+                            shape = RoundedCornerShape(12.dp),
+                            modifier = Modifier.fillMaxWidth().height(48.dp)
+                        ) {
+                            Text("Ya, Hapus", fontWeight = FontWeight.Bold, color = White)
+                        }
+                    },
+                    dismissButton = {
+                        OutlinedButton(
+                            onClick = {
+                                showDeleteDialog = false
+                                scheduleToDelete = null
+                            },
+                            shape = RoundedCornerShape(12.dp),
+                            border = BorderStroke(1.dp, Color.LightGray),
+                            modifier = Modifier.fillMaxWidth().height(48.dp)
+                        ) {
+                            Text("Batal", color = TextColorSecondary, fontWeight = FontWeight.SemiBold)
+                        }
                     }
-                }
+                )
             }
         }
     }
 }
 
-// ... Header & Filter Button sama ...
+// --- KOMPONEN PENDUKUNG ---
 
 @Composable
 fun ScheduleHeader() {
@@ -252,14 +355,15 @@ fun PremiumFilterButton(text: String, selectedFilter: String, onClick: (String) 
     }
 }
 
-// --- CARD JADWAL DIPERBAIKI ---
 @Composable
 fun PremiumScheduleCard(
     schedule: Schedule,
     isAdmin: Boolean,
     isJoined: Boolean,
-    onClick: () -> Unit, // 2. Parameter Baru
+    onClick: () -> Unit,
     onDelete: () -> Unit,
+    onEdit: () -> Unit,
+    onPublish: () -> Unit,
     onJoinToggle: () -> Unit,
     onReminderClick: () -> Unit
 ) {
@@ -267,17 +371,20 @@ fun PremiumScheduleCard(
     val dayStr = SimpleDateFormat("dd", Locale("id", "ID")).format(dateObj)
     val monthStr = SimpleDateFormat("MMM", Locale("id", "ID")).format(dateObj).uppercase()
     val totalAttendees = schedule.participantsOnline.size + schedule.participantsOffline.size
+    val isPublished = schedule.isPublished
+    val cardAlpha = if (isPublished) 1f else 0.9f
 
     Card(
         modifier = Modifier
             .fillMaxWidth()
+            .alpha(cardAlpha)
             .shadow(6.dp, RoundedCornerShape(20.dp), spotColor = Color.Black.copy(alpha = 0.05f))
-            .clickable { onClick() }, // 3. Logika Klik Diterapkan di Sini
+            .clickable { onClick() },
         shape = RoundedCornerShape(20.dp),
-        colors = CardDefaults.cardColors(containerColor = White)
+        colors = CardDefaults.cardColors(containerColor = White),
+        border = if (!isPublished && isAdmin) BorderStroke(1.dp, Color(0xFFFFC107)) else null
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
-            // ... (Isi Card Sama seperti sebelumnya) ...
             Row(modifier = Modifier.fillMaxWidth()) {
                 Surface(
                     shape = RoundedCornerShape(14.dp),
@@ -291,17 +398,46 @@ fun PremiumScheduleCard(
                 }
                 Spacer(modifier = Modifier.width(16.dp))
                 Column(modifier = Modifier.weight(1f)) {
-                    Surface(color = EmeraldDeep, shape = RoundedCornerShape(6.dp)) {
-                        Text(schedule.category, fontSize = 10.sp, color = White, fontWeight = FontWeight.Bold, modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp))
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Surface(color = EmeraldDeep, shape = RoundedCornerShape(6.dp)) {
+                            Text(schedule.category, fontSize = 10.sp, color = White, fontWeight = FontWeight.Bold, modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp))
+                        }
+                        if (!isPublished) {
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Surface(color = Color(0xFFFFC107), shape = RoundedCornerShape(6.dp)) {
+                                Text("DRAFT", fontSize = 10.sp, color = TextColorPrimary, fontWeight = FontWeight.Bold, modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp))
+                            }
+                        }
                     }
                     Spacer(modifier = Modifier.height(8.dp))
                     Text(schedule.title, fontWeight = FontWeight.Bold, fontSize = 16.sp, color = TextColorPrimary, maxLines = 2, overflow = TextOverflow.Ellipsis)
+
                     if (isAdmin) {
-                        Spacer(modifier = Modifier.height(8.dp))
-                        Row(modifier = Modifier.clickable { onDelete() }) {
-                            Icon(Icons.Default.Delete, null, tint = RedError, modifier = Modifier.size(16.dp))
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text("Hapus", fontSize = 12.sp, color = RedError)
+                        Spacer(modifier = Modifier.height(12.dp))
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            // TOMBOL EDIT
+                            Surface(
+                                onClick = onEdit,
+                                color = Color(0xFFE3F2FD),
+                                shape = RoundedCornerShape(8.dp),
+                                modifier = Modifier.size(32.dp)
+                            ) {
+                                Box(contentAlignment = Alignment.Center) {
+                                    Icon(Icons.Default.Edit, null, tint = Color(0xFF1976D2), modifier = Modifier.size(16.dp))
+                                }
+                            }
+                            Spacer(modifier = Modifier.width(8.dp))
+                            // TOMBOL DELETE
+                            Surface(
+                                onClick = onDelete,
+                                color = RedError.copy(alpha = 0.1f),
+                                shape = RoundedCornerShape(8.dp),
+                                modifier = Modifier.size(32.dp)
+                            ) {
+                                Box(contentAlignment = Alignment.Center) {
+                                    Icon(Icons.Default.Delete, null, tint = RedError, modifier = Modifier.size(16.dp))
+                                }
+                            }
                         }
                     }
                 }
@@ -316,30 +452,41 @@ fun PremiumScheduleCard(
             HorizontalDivider(color = BgPremium, thickness = 1.dp)
             Spacer(modifier = Modifier.height(12.dp))
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
-                Text("$totalAttendees Jamaah Hadir", fontSize = 12.sp, color = TextColorSecondary, fontWeight = FontWeight.Medium)
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    IconButton(onClick = onReminderClick) {
-                        Icon(Icons.Outlined.NotificationsActive, "Ingatkan", tint = Color(0xFFFF9800))
-                    }
-                    Spacer(modifier = Modifier.width(4.dp))
-                    // Hentikan propagasi klik ke parent card saat tombol "Hadir" ditekan
+                if (isAdmin && !isPublished) {
+                    Text("Status: Belum Tayang", fontSize = 12.sp, color = Color(0xFFFF8F00), fontWeight = FontWeight.SemiBold)
                     Button(
-                        onClick = onJoinToggle,
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = if (isJoined) EmeraldLight.copy(alpha = 0.3f) else EmeraldDeep,
-                            contentColor = if (isJoined) EmeraldDeep else White
-                        ),
+                        onClick = onPublish,
+                        colors = ButtonDefaults.buttonColors(containerColor = EmeraldDeep),
                         shape = RoundedCornerShape(50),
-                        contentPadding = PaddingValues(horizontal = 20.dp, vertical = 0.dp),
-                        elevation = ButtonDefaults.buttonElevation(0.dp),
                         modifier = Modifier.height(36.dp)
                     ) {
-                        if (isJoined) {
-                            Icon(Icons.Default.CheckCircle, null, modifier = Modifier.size(16.dp))
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text("Terdaftar", fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                        } else {
-                            Text("Hadir", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                        Text("Posting Sekarang", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                    }
+                } else {
+                    Text("$totalAttendees Jamaah Hadir", fontSize = 12.sp, color = TextColorSecondary, fontWeight = FontWeight.Medium)
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        IconButton(onClick = onReminderClick) {
+                            Icon(Icons.Outlined.NotificationsActive, "Ingatkan", tint = Color(0xFFFF9800))
+                        }
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Button(
+                            onClick = onJoinToggle,
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = if (isJoined) EmeraldLight.copy(alpha = 0.3f) else EmeraldDeep,
+                                contentColor = if (isJoined) EmeraldDeep else White
+                            ),
+                            shape = RoundedCornerShape(50),
+                            contentPadding = PaddingValues(horizontal = 20.dp, vertical = 0.dp),
+                            elevation = ButtonDefaults.buttonElevation(0.dp),
+                            modifier = Modifier.height(36.dp)
+                        ) {
+                            if (isJoined) {
+                                Icon(Icons.Default.CheckCircle, null, modifier = Modifier.size(16.dp))
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text("Terdaftar", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                            } else {
+                                Text("Hadir", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                            }
                         }
                     }
                 }

@@ -31,6 +31,7 @@ import com.example.smartmosque.features.home.HomeScreen // Panggil dari file bar
 import com.example.smartmosque.features.home.HomeViewModel
 import com.example.smartmosque.features.home.components.BottomNavBar
 import com.example.smartmosque.features.schedule.AddScheduleScreen
+import com.example.smartmosque.features.schedule.EditScheduleScreen
 import com.example.smartmosque.ui.theme.*
 import com.google.firebase.analytics.FirebaseAnalytics
 import com.google.firebase.messaging.FirebaseMessaging
@@ -141,6 +142,21 @@ fun AppNavigation() {
                 AddScheduleScreen(navController = navController)
             }
             donationGraph(navController, authViewModel)
+
+
+            composable(
+                route = "edit_schedule/{scheduleId}",
+                arguments = listOf(navArgument("scheduleId") { type = NavType.StringType })
+            ) { backStackEntry ->
+                // Ambil ID dari argumen
+                val scheduleId = backStackEntry.arguments?.getString("scheduleId") ?: ""
+
+                // Panggil Screen Edit
+                EditScheduleScreen(
+                    navController = navController,
+                    scheduleId = scheduleId
+                )
+            }
 
             // PROFILE
             composable(Screen.Notification.route) { com.example.smartmosque.features.notification.NotificationScreen(navController, authViewModel) }

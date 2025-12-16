@@ -5,8 +5,7 @@ import android.app.TimePickerDialog
 import android.widget.Toast
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
-import androidx.compose.foundation.horizontalScroll // Import ini
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -20,13 +19,14 @@ import androidx.compose.material.icons.filled.CalendarToday
 import androidx.compose.material.icons.filled.Link
 import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.Mic
+import androidx.compose.material.icons.filled.Save
+import androidx.compose.material.icons.filled.Send
 import androidx.compose.material.icons.filled.Title
 import androidx.compose.material.icons.outlined.Check
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
@@ -74,9 +74,57 @@ fun AddScheduleScreen(navController: NavController) {
     val dateFormat = SimpleDateFormat("EEEE, dd MMMM yyyy", Locale("id", "ID"))
     val combinedCalendar = Calendar.getInstance()
 
+    // --- FUNGSI SIMPAN DATA (REUSABLE) ---
+    fun saveData(isPublished: Boolean) {
+        if (title.isBlank() || speaker.isBlank() || location.isBlank()) {
+            Toast.makeText(context, "Mohon lengkapi data utama", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        isLoading = true
+
+        // Logic Timestamp
+        combinedCalendar.time = selectedDate
+        val startParts = startTime.split(":")
+        if (startParts.size == 2) {
+            combinedCalendar.set(Calendar.HOUR_OF_DAY, startParts[0].toInt())
+            combinedCalendar.set(Calendar.MINUTE, startParts[1].toInt())
+            combinedCalendar.set(Calendar.SECOND, 0)
+            combinedCalendar.set(Calendar.MILLISECOND, 0)
+        }
+
+        val newEvent = hashMapOf(
+            "title" to title,
+            "speaker" to speaker,
+            "location" to location,
+            "category" to category,
+            "streamingUrl" to streamingUrl,
+            "time" to "$startTime - $endTime",
+            "date" to Timestamp(combinedCalendar.time),
+            "participantsOnline" to emptyList<String>(),
+            "participantsOffline" to emptyList<String>(),
+            "createdAt" to Timestamp.now(),
+
+            // --- FIELD PENTING: STATUS PUBLIKASI ---
+            "isPublished" to isPublished
+        )
+
+        firestore.collection("schedules")
+            .add(newEvent)
+            .addOnSuccessListener {
+                isLoading = false
+                val message = if (isPublished) "Jadwal berhasil ditayangkan!" else "Disimpan sebagai Draft"
+                Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
+                navController.popBackStack()
+            }
+            .addOnFailureListener { e ->
+                isLoading = false
+                Toast.makeText(context, "Error: ${e.message}", Toast.LENGTH_SHORT).show()
+            }
+    }
+
     Scaffold(
         containerColor = BgPremium,
-        // Hapus contentWindowInsets(0.dp) agar tidak nabrak status bar di HP berponi
     ) { paddingValues ->
         Column(
             modifier = Modifier
@@ -86,7 +134,7 @@ fun AddScheduleScreen(navController: NavController) {
                 .padding(24.dp),
             verticalArrangement = Arrangement.spacedBy(20.dp)
         ) {
-            // 1. CUSTOM HEADER
+            // 1. HEADER
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier.padding(top = 8.dp, bottom = 8.dp)
@@ -109,7 +157,7 @@ fun AddScheduleScreen(navController: NavController) {
                 }
             }
 
-            // 2. FORM UTAMA (DALAM CARD)
+            // 2. FORM UTAMA
             Card(
                 colors = CardDefaults.cardColors(containerColor = White),
                 shape = RoundedCornerShape(20.dp),
@@ -120,45 +168,21 @@ fun AddScheduleScreen(navController: NavController) {
                     modifier = Modifier.padding(20.dp),
                     verticalArrangement = Arrangement.spacedBy(16.dp)
                 ) {
-                    PremiumTextField(
-                        value = title,
-                        onValueChange = { title = it },
-                        label = "Nama Kegiatan",
-                        icon = Icons.Default.Title
-                    )
-
-                    PremiumTextField(
-                        value = speaker,
-                        onValueChange = { speaker = it },
-                        label = "Nama Pemateri / Ustadz",
-                        icon = Icons.Default.Mic
-                    )
-
-                    PremiumTextField(
-                        value = location,
-                        onValueChange = { location = it },
-                        label = "Lokasi",
-                        icon = Icons.Default.LocationOn
-                    )
-
-                    PremiumTextField(
-                        value = streamingUrl,
-                        onValueChange = { streamingUrl = it },
-                        label = "Link YouTube (Opsional)",
-                        icon = Icons.Default.Link,
-                        isLast = true
-                    )
+                    PremiumTextField(title, { title = it }, "Nama Kegiatan", Icons.Default.Title)
+                    PremiumTextField(speaker, { speaker = it }, "Nama Pemateri / Ustadz", Icons.Default.Mic)
+                    PremiumTextField(location, { location = it }, "Lokasi", Icons.Default.LocationOn)
+                    PremiumTextField(streamingUrl, { streamingUrl = it }, "Link YouTube (Opsional)", Icons.Default.Link, isLast = true)
                 }
             }
 
-            // 3. KATEGORI (FIX: Tambah Horizontal Scroll)
+            // 3. KATEGORI
             Column {
                 Text("Kategori", fontWeight = FontWeight.Bold, fontSize = 14.sp, color = TextColorPrimary)
                 Spacer(modifier = Modifier.height(10.dp))
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .horizontalScroll(rememberScrollState()), // FIX: Agar bisa di-scroll ke samping
+                        .horizontalScroll(rememberScrollState()),
                     horizontalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
                     listOf("Pengajian", "Kajian Subuh", "Jumat", "PHBI", "Remaja").forEach { cat ->
@@ -195,7 +219,6 @@ fun AddScheduleScreen(navController: NavController) {
                 Text("Waktu Pelaksanaan", fontWeight = FontWeight.Bold, fontSize = 14.sp, color = TextColorPrimary)
                 Spacer(modifier = Modifier.height(10.dp))
 
-                // TANGGAL
                 Surface(
                     onClick = {
                         DatePickerDialog(context, { _, year, month, day ->
@@ -214,9 +237,7 @@ fun AddScheduleScreen(navController: NavController) {
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Box(
-                            modifier = Modifier
-                                .size(40.dp)
-                                .background(BgPremium, RoundedCornerShape(10.dp)),
+                            modifier = Modifier.size(40.dp).background(BgPremium, RoundedCornerShape(10.dp)),
                             contentAlignment = Alignment.Center
                         ) {
                             Icon(Icons.Default.CalendarToday, null, tint = EmeraldDeep)
@@ -231,24 +252,12 @@ fun AddScheduleScreen(navController: NavController) {
 
                 Spacer(modifier = Modifier.height(12.dp))
 
-                // JAM MULAI & SELESAI
                 Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    // Mulai
-                    TimePickerCard(
-                        label = "Mulai",
-                        time = startTime,
-                        modifier = Modifier.weight(1f)
-                    ) {
+                    TimePickerCard("Mulai", startTime, Modifier.weight(1f)) {
                         val cal = Calendar.getInstance()
                         TimePickerDialog(context, { _, h, m -> startTime = String.format("%02d:%02d", h, m) }, cal.get(Calendar.HOUR_OF_DAY), cal.get(Calendar.MINUTE), true).show()
                     }
-
-                    // Selesai
-                    TimePickerCard(
-                        label = "Selesai",
-                        time = endTime,
-                        modifier = Modifier.weight(1f)
-                    ) {
+                    TimePickerCard("Selesai", endTime, Modifier.weight(1f)) {
                         val cal = Calendar.getInstance()
                         TimePickerDialog(context, { _, h, m -> endTime = String.format("%02d:%02d", h, m) }, cal.get(Calendar.HOUR_OF_DAY), cal.get(Calendar.MINUTE), true).show()
                     }
@@ -257,63 +266,45 @@ fun AddScheduleScreen(navController: NavController) {
 
             Spacer(modifier = Modifier.height(20.dp))
 
-            // 5. TOMBOL SIMPAN
-            Button(
-                onClick = {
-                    if (title.isBlank() || speaker.isBlank() || location.isBlank()) {
-                        Toast.makeText(context, "Mohon lengkapi data utama", Toast.LENGTH_SHORT).show()
-                        return@Button
+            // 5. ACTION BUTTONS (DUA TOMBOL)
+            if (isLoading) {
+                Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+                    CircularProgressIndicator(color = EmeraldDeep)
+                }
+            } else {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
+                    // --- TOMBOL 1: SIMPAN DRAFT ---
+                    OutlinedButton(
+                        onClick = { saveData(isPublished = false) },
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(54.dp),
+                        shape = RoundedCornerShape(16.dp),
+                        border = BorderStroke(1.dp, EmeraldDeep),
+                        colors = ButtonDefaults.outlinedButtonColors(contentColor = EmeraldDeep)
+                    ) {
+                        Icon(Icons.Default.Save, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("Draft", fontWeight = FontWeight.Bold)
                     }
 
-                    isLoading = true
-
-                    // Logic Timestamp
-                    combinedCalendar.time = selectedDate
-                    val startParts = startTime.split(":")
-                    if (startParts.size == 2) {
-                        combinedCalendar.set(Calendar.HOUR_OF_DAY, startParts[0].toInt())
-                        combinedCalendar.set(Calendar.MINUTE, startParts[1].toInt())
-                        combinedCalendar.set(Calendar.SECOND, 0) // FIX: Reset Detik agar bersih
-                        combinedCalendar.set(Calendar.MILLISECOND, 0)
+                    // --- TOMBOL 2: PUBLIKASIKAN SEKARANG ---
+                    Button(
+                        onClick = { saveData(isPublished = true) },
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(54.dp)
+                            .shadow(8.dp, RoundedCornerShape(16.dp), spotColor = EmeraldDeep.copy(alpha = 0.3f)),
+                        shape = RoundedCornerShape(16.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = EmeraldDeep)
+                    ) {
+                        Icon(Icons.Default.Send, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("Publikasi", fontWeight = FontWeight.Bold, color = White)
                     }
-
-                    val newEvent = hashMapOf(
-                        "title" to title,
-                        "speaker" to speaker,
-                        "location" to location,
-                        "category" to category,
-                        "streamingUrl" to streamingUrl,
-                        "time" to "$startTime - $endTime",
-                        "date" to Timestamp(combinedCalendar.time),
-                        "participantsOnline" to emptyList<String>(),
-                        "participantsOffline" to emptyList<String>(),
-                        "createdAt" to Timestamp.now()
-                    )
-
-                    firestore.collection("schedules")
-                        .add(newEvent)
-                        .addOnSuccessListener {
-                            isLoading = false
-                            Toast.makeText(context, "Jadwal berhasil dibuat!", Toast.LENGTH_SHORT).show()
-                            navController.popBackStack()
-                        }
-                        .addOnFailureListener { e ->
-                            isLoading = false
-                            Toast.makeText(context, "Error: ${e.message}", Toast.LENGTH_SHORT).show()
-                        }
-                },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(54.dp)
-                    .shadow(8.dp, RoundedCornerShape(16.dp), spotColor = EmeraldDeep.copy(alpha = 0.3f)),
-                shape = RoundedCornerShape(16.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = EmeraldDeep),
-                enabled = !isLoading
-            ) {
-                if (isLoading) {
-                    CircularProgressIndicator(color = White, modifier = Modifier.size(24.dp))
-                } else {
-                    Text("Publikasikan Jadwal", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = White)
                 }
             }
 
@@ -322,8 +313,8 @@ fun AddScheduleScreen(navController: NavController) {
     }
 }
 
-// --- KOMPONEN UI TAMBAHAN ---
-
+// --- KOMPONEN PENDUKUNG TETAP SAMA ---
+// (PremiumTextField dan TimePickerCard yang sudah Anda buat sebelumnya)
 @Composable
 fun PremiumTextField(
     value: String,

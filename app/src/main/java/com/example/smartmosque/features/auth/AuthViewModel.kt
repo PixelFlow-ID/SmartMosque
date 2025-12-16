@@ -19,7 +19,6 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
 
-// State Auth
 sealed class AuthState {
     object Idle : AuthState()
     object Loading : AuthState()
@@ -33,27 +32,25 @@ class AuthViewModel(application: Application) : AndroidViewModel(application) {
     private val firestore: FirebaseFirestore = FirebaseFirestore.getInstance()
     private val prefs = application.getSharedPreferences("smart_mosque_prefs", Context.MODE_PRIVATE)
 
-    // --- PERBAIKAN UTAMA: CEK SESI LOGIN SAAT APLIKASI DIBUKA ---
+    // State Auth
     private val _authState = MutableStateFlow<AuthState>(
-        if (auth.currentUser != null) {
-            AuthState.Success(auth.currentUser)
-        } else {
-            AuthState.Idle
-        }
+        if (auth.currentUser != null) AuthState.Success(auth.currentUser) else AuthState.Idle
     )
     val authState = _authState.asStateFlow()
 
     private val _userRole = MutableStateFlow("user")
     val userRole = _userRole.asStateFlow()
 
-    // Variabel currentUser (Realtime Flow)
+    // State Notifikasi
+    private val _notifSettings = MutableStateFlow<Map<String, Boolean>>(emptyMap())
+    val notifSettings: StateFlow<Map<String, Boolean>> = _notifSettings.asStateFlow()
+
     val currentUser: StateFlow<FirebaseUser?> = _authState
         .map { state -> (state as? AuthState.Success)?.user ?: auth.currentUser }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), auth.currentUser)
 
     init {
-        // --- LISTENER OTOMATIS ---
-        // Memantau jika user login/logout secara realtime
+        // 1. Listener Login/Logout (HANYA SATU KALI)
         auth.addAuthStateListener { firebaseAuth ->
             val user = firebaseAuth.currentUser
             if (user != null) {
@@ -64,18 +61,17 @@ class AuthViewModel(application: Application) : AndroidViewModel(application) {
                 _userRole.value = "user"
             }
         }
+
+        // 2. Load Notifikasi
+        loadNotificationPreferences()
     }
 
-    // ==========================================
-    // BAGIAN 1: AUTHENTICATION
-    // ==========================================
-
+    // --- LOGIC AUTH ---
     private fun fetchUserRole(uid: String) {
         viewModelScope.launch {
             try {
                 val document = firestore.collection("users").document(uid).get().await()
-                val role = document.getString("role") ?: "user"
-                _userRole.value = role
+                _userRole.value = document.getString("role") ?: "user"
             } catch (e: Exception) {
                 _userRole.value = "user"
             }
@@ -84,18 +80,15 @@ class AuthViewModel(application: Application) : AndroidViewModel(application) {
 
     fun login(email: String, password: String) {
         viewModelScope.launch {
-            // Reset ke loading agar UI merespon klik baru
             _authState.value = AuthState.Loading
-
             if (email.isBlank() || password.isBlank()) {
-                _authState.value = AuthState.Error("Email dan Password tidak boleh kosong")
+                _authState.value = AuthState.Error("Email dan Password wajib diisi")
                 return@launch
             }
             if (!Patterns.EMAIL_ADDRESS.matcher(email).matches()) {
-                _authState.value = AuthState.Error("Format email tidak valid")
+                _authState.value = AuthState.Error("Format email salah")
                 return@launch
             }
-
             try {
                 val result = auth.signInWithEmailAndPassword(email, password).await()
                 _authState.value = AuthState.Success(result.user)
@@ -108,13 +101,10 @@ class AuthViewModel(application: Application) : AndroidViewModel(application) {
     fun register(name: String, email: String, phoneRaw: String, password: String) {
         viewModelScope.launch {
             _authState.value = AuthState.Loading
-
             if (name.isBlank() || email.isBlank() || phoneRaw.isBlank() || password.isBlank()) {
                 _authState.value = AuthState.Error("Semua data wajib diisi")
                 return@launch
             }
-
-            // Validasi di ViewModel juga (Safety Net)
             if (password.length < 6) {
                 _authState.value = AuthState.Error("Password minimal 6 karakter")
                 return@launch
@@ -125,7 +115,6 @@ class AuthViewModel(application: Application) : AndroidViewModel(application) {
             try {
                 val authResult = auth.createUserWithEmailAndPassword(email, password).await()
                 val user = authResult.user
-
                 if (user != null) {
                     val userData = hashMapOf(
                         "uid" to user.uid,
@@ -135,13 +124,10 @@ class AuthViewModel(application: Application) : AndroidViewModel(application) {
                         "role" to "user",
                         "createdAt" to System.currentTimeMillis()
                     )
-
                     firestore.collection("users").document(user.uid).set(userData).await()
 
-                    // Update Nama di Auth Firebase agar langsung muncul tanpa reload
                     val profileUpdates = com.google.firebase.auth.UserProfileChangeRequest.Builder()
-                        .setDisplayName(name)
-                        .build()
+                        .setDisplayName(name).build()
                     user.updateProfile(profileUpdates).await()
 
                     _authState.value = AuthState.Success(user)
@@ -159,18 +145,14 @@ class AuthViewModel(application: Application) : AndroidViewModel(application) {
                 val credential = GoogleAuthProvider.getCredential(idToken, null)
                 val authResult = auth.signInWithCredential(credential).await()
                 val user = authResult.user
-
                 if (user != null) {
                     val docRef = firestore.collection("users").document(user.uid)
-                    val docSnapshot = docRef.get().await()
-
-                    if (!docSnapshot.exists()) {
+                    if (!docRef.get().await().exists()) {
                         val userData = hashMapOf(
                             "uid" to user.uid,
                             "fullName" to (user.displayName ?: "Jemaah"),
                             "email" to (user.email ?: ""),
                             "phoneNumber" to (user.phoneNumber ?: ""),
-                            "photoUrl" to (user.photoUrl?.toString() ?: ""),
                             "role" to "user",
                             "createdAt" to System.currentTimeMillis()
                         )
@@ -184,12 +166,11 @@ class AuthViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    // ==========================================
-    // BAGIAN 2: NOTIFICATION & UTILS
-    // ==========================================
-
-    fun isTopicEnabled(topic: String): Boolean {
-        return prefs.getBoolean("notif_$topic", true)
+    // --- LOGIC NOTIFIKASI ---
+    private fun loadNotificationPreferences() {
+        val events = prefs.getBoolean("notif_events", true)
+        val donations = prefs.getBoolean("notif_donations", true)
+        _notifSettings.value = mapOf("events" to events, "donations" to donations)
     }
 
     fun toggleNotification(topic: String, isEnabled: Boolean) {
@@ -199,7 +180,12 @@ class AuthViewModel(application: Application) : AndroidViewModel(application) {
         } else {
             FirebaseMessaging.getInstance().unsubscribeFromTopic(topic)
         }
+        val currentMap = _notifSettings.value.toMutableMap()
+        currentMap[topic] = isEnabled
+        _notifSettings.value = currentMap
     }
+
+    fun isTopicEnabled(topic: String) = prefs.getBoolean("notif_$topic", true)
 
     private fun formatPhoneNumber(phone: String): String {
         var cleanPhone = phone.trim().replace("-", "").replace(" ", "")
@@ -210,6 +196,5 @@ class AuthViewModel(application: Application) : AndroidViewModel(application) {
 
     fun logout() {
         auth.signOut()
-        // AuthStateListener akan otomatis mengubah state jadi Idle
     }
 }

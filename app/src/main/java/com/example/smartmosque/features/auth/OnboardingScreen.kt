@@ -1,7 +1,9 @@
 package com.example.smartmosque.features.auth
 
+import android.annotation.SuppressLint
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.pager.HorizontalPager
@@ -29,20 +31,17 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
-import com.example.smartmosque.ui.theme.Screen
 import kotlinx.coroutines.launch
-import androidx.compose.material3.Scaffold
-import androidx.compose.foundation.ExperimentalFoundationApi
-import android.annotation.SuppressLint
 
-
-// IMPORT WARNA TEMA
+// Warna Tema Baru ---
+import com.example.smartmosque.ui.theme.Screen
 import com.example.smartmosque.ui.theme.BgPremium
-import com.example.smartmosque.ui.theme.EmeraldDeep // Kemungkinan ini juga belum
-import com.example.smartmosque.ui.theme.EmeraldLight // Dan ini
-import com.example.smartmosque.ui.theme.White // Dan ini
+import com.example.smartmosque.ui.theme.EmeraldDeep
+import com.example.smartmosque.ui.theme.EmeraldLight
+import com.example.smartmosque.ui.theme.White
 import com.example.smartmosque.ui.theme.TextColorSecondary
 
+// Model Data
 data class OnboardingPage(
     val title: String,
     val description: String,
@@ -102,17 +101,16 @@ fun OnboardingScreen(
 
     Scaffold(
         containerColor = BgPremium,
-        contentWindowInsets = WindowInsets(0.dp)
+        contentWindowInsets = WindowInsets(0.dp) // Kita atur manual biar background full
     ) { _ ->
         Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(bottom = 0.dp) // Abaikan padding bawah agar tembus navbar
+            modifier = Modifier.fillMaxSize()
         ) {
-            // --- BAGIAN ATAS: GAMBAR/ICON (60%) ---
+            // --- BAGIAN ATAS: GAMBAR/ICON (Flexible - Weight 1f) ---
+            // Ini akan mengambil sisa ruang yang ada. Jadi kalau layar pendek, gambar mengecil.
             Box(
                 modifier = Modifier
-                    .weight(0.6f)
+                    .weight(1f)
                     .fillMaxWidth()
             ) {
                 HorizontalPager(
@@ -123,72 +121,90 @@ fun OnboardingScreen(
                 }
             }
 
-            // --- BAGIAN BAWAH: TEKS & NAVIGASI (40%) ---
+            // --- BAGIAN BAWAH: KONTEN (Dynamic Height) ---
+            // TIDAK PAKAI WEIGHT. Tingginya menyesuaikan isi teks + tombol.
             Surface(
-                modifier = Modifier
-                    .weight(0.4f)
-                    .fillMaxWidth(),
+                modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(topStart = 40.dp, topEnd = 40.dp),
                 color = White,
                 shadowElevation = 16.dp
             ) {
                 Column(
                     modifier = Modifier
-                        .fillMaxSize()
-                        .padding(start = 32.dp, end = 32.dp, top = 32.dp)
-                        // PENTING: navigationBarsPadding() HANYA DI KONTEN BAWAH
-                        // Agar tombol naik ke atas navbar, tapi background putihnya tetap full
+                        .fillMaxWidth()
+                        .padding(horizontal = 32.dp, vertical = 32.dp)
+                        // PENTING: Menambahkan padding agar tombol tidak tertutup navigasi HP
                         .navigationBarsPadding(),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.SpaceBetween
+                    horizontalAlignment = Alignment.CenterHorizontally
                 ) {
                     // 1. Indikator
-                    Row(horizontalArrangement = Arrangement.Center, modifier = Modifier.fillMaxWidth()) {
+                    Row(
+                        horizontalArrangement = Arrangement.Center,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(bottom = 24.dp)
+                    ) {
                         repeat(pages.size) { iteration ->
                             val isSelected = pagerState.currentPage == iteration
                             val width by animateDpAsState(
                                 targetValue = if (isSelected) 32.dp else 10.dp,
-                                animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy), label = "dot"
+                                animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy),
+                                label = "dot"
                             )
                             val color = if (isSelected) EmeraldDeep else Color.LightGray.copy(alpha = 0.5f)
-                            Box(modifier = Modifier.padding(4.dp).height(10.dp).width(width).clip(RoundedCornerShape(50)).background(color))
+                            Box(
+                                modifier = Modifier
+                                    .padding(4.dp)
+                                    .height(10.dp)
+                                    .width(width)
+                                    .clip(RoundedCornerShape(50))
+                                    .background(color)
+                            )
                         }
                     }
 
                     // 2. Teks Judul & Deskripsi
-                    AnimatedContent(
-                        targetState = pages[pagerState.currentPage],
-                        transitionSpec = {
-                            fadeIn(animationSpec = tween(600)) + slideInVertically { it / 2 } togetherWith
-                                    fadeOut(animationSpec = tween(400))
-                        },
-                        label = "textAnim"
-                    ) { currentPage ->
-                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            Text(
-                                text = currentPage.title,
-                                fontSize = 24.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = TextColorSecondary,
-                                textAlign = TextAlign.Center,
-                                lineHeight = 32.sp
-                            )
-                            Spacer(modifier = Modifier.height(16.dp))
-                            Text(
-                                text = currentPage.description,
-                                fontSize = 14.sp,
-                                color = TextColorSecondary.copy(alpha = 0.7f),
-                                textAlign = TextAlign.Center,
-                                lineHeight = 22.sp
-                            )
+                    // Diberi minHeight agar posisi tombol stabil saat slide digeser
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(min = 120.dp),
+                        contentAlignment = Alignment.TopCenter
+                    ) {
+                        AnimatedContent(
+                            targetState = pages[pagerState.currentPage],
+                            transitionSpec = {
+                                fadeIn(animationSpec = tween(600)) + slideInVertically { it / 2 } togetherWith
+                                        fadeOut(animationSpec = tween(400))
+                            },
+                            label = "textAnim"
+                        ) { currentPage ->
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                Text(
+                                    text = currentPage.title,
+                                    fontSize = 24.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = TextColorSecondary,
+                                    textAlign = TextAlign.Center,
+                                    lineHeight = 32.sp
+                                )
+                                Spacer(modifier = Modifier.height(16.dp))
+                                Text(
+                                    text = currentPage.description,
+                                    fontSize = 14.sp,
+                                    color = TextColorSecondary.copy(alpha = 0.7f),
+                                    textAlign = TextAlign.Center,
+                                    lineHeight = 22.sp
+                                )
+                            }
                         }
                     }
 
+                    Spacer(modifier = Modifier.height(32.dp))
+
                     // 3. Tombol Navigasi
                     Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(bottom = 24.dp), // Tambahan padding bawah sedikit agar estetik
+                        modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
@@ -198,7 +214,12 @@ fun OnboardingScreen(
                                 else navController.navigate(Screen.Login.route)
                             }
                         ) {
-                            Text("Lewati", color = TextColorSecondary, fontWeight = FontWeight.SemiBold, fontSize = 16.sp)
+                            Text(
+                                "Lewati",
+                                color = TextColorSecondary,
+                                fontWeight = FontWeight.SemiBold,
+                                fontSize = 16.sp
+                            )
                         }
 
                         Button(
@@ -215,7 +236,11 @@ fun OnboardingScreen(
                             colors = ButtonDefaults.buttonColors(containerColor = EmeraldDeep),
                             shape = RoundedCornerShape(16.dp),
                             contentPadding = PaddingValues(horizontal = 24.dp, vertical = 14.dp),
-                            modifier = Modifier.shadow(8.dp, RoundedCornerShape(16.dp), spotColor = EmeraldDeep.copy(alpha = 0.4f))
+                            modifier = Modifier.shadow(
+                                8.dp,
+                                RoundedCornerShape(16.dp),
+                                spotColor = EmeraldDeep.copy(alpha = 0.4f)
+                            )
                         ) {
                             val isLastPage = pagerState.currentPage == pages.size - 1
                             Text(
@@ -226,7 +251,12 @@ fun OnboardingScreen(
                             )
                             if (!isLastPage) {
                                 Spacer(modifier = Modifier.width(8.dp))
-                                Icon(Icons.AutoMirrored.Filled.ArrowForward, null, tint = White, modifier = Modifier.size(20.dp))
+                                Icon(
+                                    Icons.AutoMirrored.Filled.ArrowForward,
+                                    null,
+                                    tint = White,
+                                    modifier = Modifier.size(20.dp)
+                                )
                             }
                         }
                     }

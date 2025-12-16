@@ -75,7 +75,6 @@ fun ProfileDetailScreen(
                 .addSnapshotListener { snapshot, _ ->
                     if (snapshot != null && snapshot.exists()) {
                         val role = snapshot.getString("role")
-                        // Jika role == admin (ignore case), ubah jadi "Admin", selain itu "Member"
                         userRoleLabel = if (role.equals("admin", ignoreCase = true)) "Admin" else "Member"
                     }
                 }
@@ -194,9 +193,8 @@ fun ProfileDetailScreen(
                     )
                 }
 
-                // Badge Status (ADMIN / MEMBER)
+                // Badge Status
                 if (isLoggedIn) {
-                    // Warna badge: Emas jika Admin, Hijau jika Member
                     val badgeColor = if (userRoleLabel == "Admin") Color(0xFFD4AF37) else EmeraldDeep
 
                     Box(
@@ -204,13 +202,13 @@ fun ProfileDetailScreen(
                             .offset(x = 5.dp, y = 5.dp)
                             .clip(RoundedCornerShape(20.dp))
                             .background(White)
-                            .border(2.dp, badgeColor, RoundedCornerShape(20.dp)) // Border ikut warna role
+                            .border(2.dp, badgeColor, RoundedCornerShape(20.dp))
                             .padding(horizontal = 10.dp, vertical = 4.dp)
                     ) {
                         Text(
-                            text = userRoleLabel, // Teks Dinamis
+                            text = userRoleLabel,
                             fontSize = 10.sp,
-                            color = badgeColor,   // Warna Teks ikut role
+                            color = badgeColor,
                             fontWeight = FontWeight.Bold
                         )
                     }
@@ -276,6 +274,10 @@ fun ProfileDetailScreen(
                 Text("Preferensi", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = TextColorPrimary, modifier = Modifier.align(Alignment.Start))
                 Spacer(modifier = Modifier.height(10.dp))
 
+                // Ambil Context untuk menampilkan Toast
+                val context = androidx.compose.ui.platform.LocalContext.current
+                val notifSettings by authViewModel.notifSettings.collectAsState()
+
                 Card(
                     colors = CardDefaults.cardColors(containerColor = White),
                     shape = RoundedCornerShape(20.dp),
@@ -283,18 +285,34 @@ fun ProfileDetailScreen(
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Column(modifier = Modifier.padding(vertical = 8.dp)) {
+
+                        // SWITCH 1: JADWAL
                         PremiumToggleItem(
                             icon = Icons.Outlined.Notifications,
                             title = "Notifikasi Jadwal",
-                            initialChecked = authViewModel.isTopicEnabled("events"),
-                            onToggle = { isChecked -> authViewModel.toggleNotification("events", isChecked) }
+                            isChecked = notifSettings["events"] ?: true,
+                            onToggle = { isChecked ->
+                                // 1. Update Logic
+                                authViewModel.toggleNotification("events", isChecked)
+                                // 2. Tampilkan Pesan
+                                val msg = if (isChecked) "Notifikasi Jadwal Diaktifkan" else "Notifikasi Jadwal Dimatikan"
+                                android.widget.Toast.makeText(context, msg, android.widget.Toast.LENGTH_SHORT).show()
+                            }
                         )
+
                         PremiumDivider()
+
+                        // SWITCH 2: DONASI
                         PremiumToggleItem(
                             icon = Icons.Outlined.AttachMoney,
                             title = "Info Donasi",
-                            initialChecked = authViewModel.isTopicEnabled("donations"),
-                            onToggle = { isChecked -> authViewModel.toggleNotification("donations", isChecked) }
+                            isChecked = notifSettings["donations"] ?: true,
+                            onToggle = { isChecked ->
+                                authViewModel.toggleNotification("donations", isChecked)
+
+                                val msg = if (isChecked) "Info Donasi Diaktifkan" else "Info Donasi Dimatikan"
+                                android.widget.Toast.makeText(context, msg, android.widget.Toast.LENGTH_SHORT).show()
+                            }
                         )
                     }
                 }
@@ -333,7 +351,8 @@ fun ProfileDetailScreen(
     }
 }
 
-// --- KOMPONEN UI PREMIUM (TIDAK BERUBAH) ---
+// --- KOMPONEN UI PREMIUM ---
+
 @Composable
 fun PremiumStatColumn(value: String, label: String) {
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -366,21 +385,22 @@ fun PremiumProfileItem(icon: ImageVector, title: String, value: String) {
     }
 }
 
+// [UPDATE] Komponen Toggle yang Stateless (Menerima isChecked dari luar)
 @Composable
 fun PremiumToggleItem(
     icon: ImageVector,
     title: String,
-    initialChecked: Boolean,
+    isChecked: Boolean, // Mengganti initialChecked dengan isChecked (Langsung)
     onToggle: (Boolean) -> Unit
 ) {
-    var checked by remember { mutableStateOf(initialChecked) }
+    // Kita hapus variable 'checked' lokal. Kita percaya penuh pada 'isChecked' dari parameter.
 
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .clickable {
-                checked = !checked
-                onToggle(checked)
+                // Saat diklik, minta toggle nilai kebalikannya
+                onToggle(!isChecked)
             }
             .padding(horizontal = 20.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -400,10 +420,9 @@ fun PremiumToggleItem(
         }
 
         Switch(
-            checked = checked,
-            onCheckedChange = { isChecked ->
-                checked = isChecked
-                onToggle(isChecked)
+            checked = isChecked, // Menggunakan value dari parameter
+            onCheckedChange = { newVal ->
+                onToggle(newVal)
             },
             colors = SwitchDefaults.colors(
                 checkedThumbColor = White,
