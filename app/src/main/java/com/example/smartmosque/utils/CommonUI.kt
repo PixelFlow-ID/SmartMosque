@@ -1,7 +1,6 @@
 package com.example.smartmosque.utils
 
 import android.widget.Toast
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -43,26 +42,59 @@ fun UpcommingEventBox(navController: NavController, authViewModel: AuthViewModel
     var eventList by remember { mutableStateOf<List<Schedule>>(emptyList()) }
     var isLoading by remember { mutableStateOf(true) }
 
-    // --- FETCH DATA (Logic Tetap Sama) ---
+    // --- FETCH DATA (DIPERBAIKI) ---
     LaunchedEffect(Unit) {
-        Firebase.firestore.collection("schedules").orderBy("date", Query.Direction.ASCENDING).addSnapshotListener { snapshot, _ ->
-            isLoading = false
-            if (snapshot != null) {
-                val now = Date()
-                val validEvents = mutableListOf<Schedule>()
-                snapshot.documents.forEach { doc ->
-                    try {
-                        val firestoreTimestamp = doc.getTimestamp("date")
-                        val eventDate = firestoreTimestamp?.toDate()
-                        @Suppress("UNCHECKED_CAST") val onlineList = (doc.get("participantsOnline") as? List<String>) ?: emptyList()
-                        @Suppress("UNCHECKED_CAST") val offlineList = (doc.get("participantsOffline") as? List<String>) ?: emptyList()
-                        val schedule = Schedule(id = doc.id, title = doc.getString("title") ?: "", speaker = doc.getString("speaker") ?: "", time = doc.getString("time") ?: "", location = doc.getString("location") ?: "", category = doc.getString("category") ?: "Pengajian", date = firestoreTimestamp, participantsOnline = onlineList, participantsOffline = offlineList, streamingUrl = doc.getString("streamingUrl") ?: "")
-                        if (eventDate != null && eventDate.after(now)) validEvents.add(schedule)
-                    } catch (e: Exception) { e.printStackTrace() }
+        val today = Date()
+
+        Firebase.firestore.collection("schedules")
+            // 1. FILTER: HANYA YANG SUDAH PUBLISH (DRAFT TIDAK AKAN DIAMBIL)
+            .whereEqualTo("isPublished", true)
+
+            // 2. URUTKAN: DARI TANGGAL TERDEKAT
+            .orderBy("date", Query.Direction.ASCENDING)
+
+            .addSnapshotListener { snapshot, _ ->
+                isLoading = false
+                if (snapshot != null) {
+                    val validEvents = mutableListOf<Schedule>()
+
+                    snapshot.documents.forEach { doc ->
+                        try {
+                            val firestoreTimestamp = doc.getTimestamp("date")
+                            val eventDate = firestoreTimestamp?.toDate()
+
+                            @Suppress("UNCHECKED_CAST")
+                            val onlineList = (doc.get("participantsOnline") as? List<String>) ?: emptyList()
+                            @Suppress("UNCHECKED_CAST")
+                            val offlineList = (doc.get("participantsOffline") as? List<String>) ?: emptyList()
+
+                            // Pastikan membaca field isPublished juga (default true jika null)
+                            val isPublished = doc.getBoolean("isPublished") ?: true
+
+                            val schedule = Schedule(
+                                id = doc.id,
+                                title = doc.getString("title") ?: "",
+                                speaker = doc.getString("speaker") ?: "",
+                                time = doc.getString("time") ?: "",
+                                location = doc.getString("location") ?: "",
+                                category = doc.getString("category") ?: "Pengajian",
+                                date = firestoreTimestamp,
+                                participantsOnline = onlineList,
+                                participantsOffline = offlineList,
+                                streamingUrl = doc.getString("streamingUrl") ?: "",
+                                isPublished = isPublished // Masukkan ke model
+                            )
+
+                            // Filter Tambahan: Pastikan tanggal belum lewat
+                            if (eventDate != null && eventDate.after(today)) {
+                                validEvents.add(schedule)
+                            }
+                        } catch (e: Exception) { e.printStackTrace() }
+                    }
+                    // Ambil 3 event teratas saja
+                    eventList = validEvents.take(3)
                 }
-                eventList = validEvents.take(3)
             }
-        }
     }
 
     Column(modifier = Modifier.fillMaxWidth()) {
@@ -106,26 +138,17 @@ fun UpcommingEventBox(navController: NavController, authViewModel: AuthViewModel
                         schedule = schedule,
                         isJoined = isJoined,
                         onCardClick = { navController.navigate("schedule_detail/${schedule.id}") },
-
-                        // --- UPDATED LOGIC HERE (Menambah Toast) ---
                         onJoinClick = {
                             if (userId == null) {
                                 Toast.makeText(context, "Silakan login dulu", Toast.LENGTH_SHORT).show()
                             } else {
                                 val docRef = Firebase.firestore.collection("schedules").document(schedule.id)
-
                                 if (isJoined) {
-                                    // Logic Batal Gabung + Toast
                                     docRef.update("participantsOnline", FieldValue.arrayRemove(userId))
-                                        .addOnSuccessListener {
-                                            Toast.makeText(context, "Anda membatalkan kehadiran", Toast.LENGTH_SHORT).show()
-                                        }
+                                        .addOnSuccessListener { Toast.makeText(context, "Anda membatalkan kehadiran", Toast.LENGTH_SHORT).show() }
                                 } else {
-                                    // Logic Gabung + Toast
                                     docRef.update("participantsOnline", FieldValue.arrayUnion(userId))
-                                        .addOnSuccessListener {
-                                            Toast.makeText(context, "Berhasil bergabung! Sampai jumpa di lokasi.", Toast.LENGTH_SHORT).show()
-                                        }
+                                        .addOnSuccessListener { Toast.makeText(context, "Berhasil bergabung!", Toast.LENGTH_SHORT).show() }
                                 }
                             }
                         }
@@ -136,6 +159,7 @@ fun UpcommingEventBox(navController: NavController, authViewModel: AuthViewModel
     }
 }
 
+// ... (Komponen PremiumScheduleCard Tetap Sama seperti sebelumnya) ...
 @Composable
 fun PremiumScheduleCard(schedule: Schedule, isJoined: Boolean, onCardClick: () -> Unit, onJoinClick: () -> Unit) {
     val date = schedule.date?.toDate()
