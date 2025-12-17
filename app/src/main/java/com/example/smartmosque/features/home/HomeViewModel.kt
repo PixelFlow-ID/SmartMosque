@@ -26,7 +26,6 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
     val totalParticipants: StateFlow<Int> = _totalParticipants
 
     // Variabel lokal untuk menyimpan waktu terakhir cek di memori
-    // Agar listener bisa langsung membandingkan tanpa baca Prefs berulang kali
     private var lastCheckTime: Long = 0L
 
     init {
@@ -41,10 +40,8 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
         fetchScheduleStats()
     }
 
-    // --- LOGIKA NOTIFIKASI REAL-TIME (DIPERBAIKI) ---
+    // --- LOGIKA NOTIFIKASI REAL-TIME ---
     private fun listenForNewNotifications() {
-        // Kita pasang 2 Listener: Satu untuk Jadwal, Satu untuk Wakaf
-
         // A. LISTENER JADWAL
         Firebase.firestore.collection("schedules")
             .orderBy("createdAt", Query.Direction.DESCENDING)
@@ -54,9 +51,10 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
 
                 val latestDoc = snapshot.documents[0]
                 val createdDate = latestDoc.getTimestamp("createdAt")?.toDate()
+                // Cek apakah jadwal ini dipublish? (Opsional: agar notif tidak muncul kalau masih draft)
+                val isPublished = latestDoc.getBoolean("isPublished") ?: true
 
-                if (createdDate != null) {
-                    // Cek: Apakah waktu buat data > waktu terakhir user buka notif?
+                if (createdDate != null && isPublished) {
                     if (createdDate.time > lastCheckTime) {
                         _hasUnreadNotifications.value = true
                     }
@@ -64,7 +62,7 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
             }
 
         // B. LISTENER WAKAF
-        Firebase.firestore.collection("waqf_programs") // Pastikan nama koleksi sesuai di Firebase
+        Firebase.firestore.collection("waqf_programs")
             .orderBy("createdAt", Query.Direction.DESCENDING)
             .limit(1)
             .addSnapshotListener { snapshot, e ->
@@ -74,7 +72,6 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
                 val createdDate = latestDoc.getTimestamp("createdAt")?.toDate()
 
                 if (createdDate != null) {
-                    // Cek: Apakah waktu buat data > waktu terakhir user buka notif?
                     if (createdDate.time > lastCheckTime) {
                         _hasUnreadNotifications.value = true
                     }
@@ -82,21 +79,15 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
             }
     }
 
-    // Dipanggil saat User Klik Lonceng
     fun markNotificationsAsRead() {
-        // 1. Hilangkan Badge di UI seketika
         _hasUnreadNotifications.value = false
-
-        // 2. Simpan waktu SEKARANG sebagai "Titik Referensi Baru"
         val currentTime = System.currentTimeMillis()
-        lastCheckTime = currentTime // Update variabel memori agar listener tahu
-
-        // 3. Simpan ke Memory HP (SharedPrefs) agar tersimpan walau aplikasi ditutup
+        lastCheckTime = currentTime
         val context = getApplication<Application>().applicationContext
-        NotificationPrefs.saveLastCheckTime(context) // Pastikan fungsi ini menyimpan System.currentTimeMillis()
+        NotificationPrefs.saveLastCheckTime(context)
     }
 
-    // --- LOGIKA STATISTIK (SUDAH BENAR, DIPERTAHANKAN) ---
+    // --- LOGIKA STATISTIK (DIPERBAIKI UNTUK FILTER DRAFT) ---
     private fun fetchScheduleStats() {
         viewModelScope.launch {
             Firebase.firestore.collection("schedules")
@@ -112,14 +103,26 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
 
                     for (doc in snapshot.documents) {
                         try {
+                            // 1. FILTER: CEK APAKAH SUDAH TAYANG (PUBLISHED)
+                            // Default true agar data lama (sebelum fitur draft ada) tetap muncul
+                            val isPublished = doc.getBoolean("isPublished") ?: true
+
+                            // Jika False (Draft), skip/lompati item ini, jangan dihitung
+                            if (!isPublished) continue
+
+                            // 2. CEK TANGGAL
                             val timestamp = doc.getTimestamp("date")
                             val eventDate = timestamp?.toDate()
 
                             if (eventDate != null) {
                                 cal.time = eventDate
+                                // Cek apakah bulan dan tahun sama dengan saat ini
                                 if (cal.get(Calendar.MONTH) == currentMonth && cal.get(Calendar.YEAR) == currentYear) {
+
+                                    // Hitung Jumlah Kegiatan
                                     countThisMonth++
 
+                                    // Hitung Jumlah Peserta (Online + Offline)
                                     val rawOnline = doc.get("participantsOnline")
                                     val onlineCount = when (rawOnline) {
                                         is List<*> -> rawOnline.size
@@ -140,6 +143,7 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
                             err.printStackTrace()
                         }
                     }
+                    // Update State UI
                     _eventsThisMonth.value = countThisMonth
                     _totalParticipants.value = totalAttendance
                 }

@@ -41,6 +41,14 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.navigation.NavController
 import coil.compose.AsyncImage
+
+// --- IMPORT PERLU DITAMBAHKAN ---
+import com.example.smartmosque.utils.ImageUtils // Pastikan File ImageUtils ada di package utils
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+// --------------------------------
+
 import com.cloudinary.android.MediaManager
 import com.cloudinary.android.callback.ErrorInfo
 import com.cloudinary.android.callback.UploadCallback
@@ -50,7 +58,6 @@ import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
 import java.util.Date
 
-// --- GANTI IMPORT INI SESUAI TEMA ANDA ---
 import com.example.smartmosque.ui.theme.GreenPrimary
 import com.example.smartmosque.ui.theme.EmeraldDeep
 import com.example.smartmosque.ui.theme.EmeraldLight
@@ -69,13 +76,16 @@ fun ScheduleDetailScreen(
     val currentUser by authViewModel.currentUser.collectAsState()
     val userId = currentUser?.uid
 
+    // --- SCOPE UNTUK BACKGROUND PROCESS ---
+    val scope = rememberCoroutineScope()
+
     // State Data
     var schedule by remember { mutableStateOf<Schedule?>(null) }
     var selectedTab by remember { mutableStateOf(1) } // 1 = Online, 0 = Offline
 
     // State Foto & Upload
     var photoUri by remember { mutableStateOf<Uri?>(null) }
-    var isUploading by remember { mutableStateOf(false) } // Loading saat upload
+    var isUploading by remember { mutableStateOf(false) }
 
     val launcher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
         photoUri = uri
@@ -180,49 +190,71 @@ fun ScheduleDetailScreen(
                         // --- SECTION ONLINE ---
                         PremiumOnlineSection(s.streamingUrl, userId, s.id, s.participantsOnline)
                     } else {
-                        // --- SECTION OFFLINE DENGAN CLOUDINARY ---
+                        // --- SECTION OFFLINE DENGAN KOMPRESI & CLOUDINARY ---
                         PremiumOfflineSection(
                             hasAttendance = isOfflinePresent,
                             photoUri = photoUri,
-                            isLoading = isUploading, // Kirim status loading
+                            isLoading = isUploading,
                             onUploadClick = { if (!isUploading) launcher.launch("image/*") },
                             onSubmit = {
                                 if (userId != null && photoUri != null) {
                                     isUploading = true
 
-                                    // 1. Upload ke Cloudinary
-                                    CloudinaryHelper.uploadImage(context, photoUri!!) { imageUrl ->
-                                        if (imageUrl != null) {
-                                            // 2. Jika Sukses, Simpan URL ke Firestore
-                                            val db = FirebaseFirestore.getInstance()
+                                    // --- LOGIKA KOMPRESI DAN UPLOAD ---
+                                    scope.launch(Dispatchers.IO) {
+                                        // 1. Kompres Gambar
+                                        val compressedFile = ImageUtils.compressImage(context, photoUri!!)
 
-                                            val attendanceData = hashMapOf(
-                                                "userId" to userId,
-                                                "scheduleId" to s.id,
-                                                "date" to Date(),
-                                                "type" to "OFFLINE_PHOTO",
-                                                "photoUrl" to imageUrl // <-- URL PUBLIK
-                                            )
+                                        if (compressedFile != null) {
+                                            // 2. Upload File Hasil Kompresi (Path String)
+                                            CloudinaryHelper.uploadFile(context, compressedFile.absolutePath) { imageUrl ->
+                                                if (imageUrl != null) {
+                                                    // 3. Simpan ke Firestore (Masih di Background Thread, perlu hati-hati)
+                                                    val db = FirebaseFirestore.getInstance()
 
-                                            // Simpan History
-                                            db.collection("attendance").add(attendanceData)
-                                                .addOnSuccessListener {
-                                                    // Update Absensi di Jadwal
-                                                    db.collection("schedules").document(s.id)
-                                                        .update("participantsOffline", FieldValue.arrayUnion(userId))
+                                                    val attendanceData = hashMapOf(
+                                                        "userId" to userId,
+                                                        "scheduleId" to s.id,
+                                                        "date" to Date(),
+                                                        "type" to "OFFLINE_PHOTO",
+                                                        "photoUrl" to imageUrl
+                                                    )
+
+                                                    db.collection("attendance").add(attendanceData)
                                                         .addOnSuccessListener {
-                                                            isUploading = false
-                                                            photoUri = null
-                                                            Toast.makeText(context, "Absensi Berhasil!", Toast.LENGTH_SHORT).show()
+                                                            // Update Absensi di Jadwal
+                                                            db.collection("schedules").document(s.id)
+                                                                .update("participantsOffline", FieldValue.arrayUnion(userId))
+                                                                .addOnSuccessListener {
+                                                                    // Bersihkan file cache
+                                                                    try { compressedFile.delete() } catch (e: Exception){}
+
+                                                                    // Update UI di Main Thread
+                                                                    scope.launch(Dispatchers.Main) {
+                                                                        isUploading = false
+                                                                        photoUri = null
+                                                                        Toast.makeText(context, "Absensi Berhasil!", Toast.LENGTH_SHORT).show()
+                                                                    }
+                                                                }
                                                         }
+                                                        .addOnFailureListener { e ->
+                                                            scope.launch(Dispatchers.Main) {
+                                                                isUploading = false
+                                                                Toast.makeText(context, "Gagal simpan DB: ${e.message}", Toast.LENGTH_SHORT).show()
+                                                            }
+                                                        }
+                                                } else {
+                                                    scope.launch(Dispatchers.Main) {
+                                                        isUploading = false
+                                                        Toast.makeText(context, "Gagal upload gambar", Toast.LENGTH_SHORT).show()
+                                                    }
                                                 }
-                                                .addOnFailureListener {
-                                                    isUploading = false
-                                                    Toast.makeText(context, "Gagal simpan DB: ${it.message}", Toast.LENGTH_SHORT).show()
-                                                }
+                                            }
                                         } else {
-                                            isUploading = false
-                                            Toast.makeText(context, "Gagal upload gambar", Toast.LENGTH_SHORT).show()
+                                            scope.launch(Dispatchers.Main) {
+                                                isUploading = false
+                                                Toast.makeText(context, "Gagal memproses gambar", Toast.LENGTH_SHORT).show()
+                                            }
                                         }
                                     }
                                 } else {
@@ -239,14 +271,14 @@ fun ScheduleDetailScreen(
 }
 
 // ==========================================
-// OBJECT HELPER CLOUDINARY
+// OBJECT HELPER CLOUDINARY (UPDATED)
 // ==========================================
 object CloudinaryHelper {
     private const val CLOUD_NAME = "dhzn4vwic"
     private const val UPLOAD_PRESET = "masjid_upload"
 
-    fun uploadImage(context: Context, uri: Uri, onResult: (String?) -> Unit) {
-        // Init Cloudinary jika belum (Lazy Init)
+    // Init function (Lazy)
+    private fun init(context: Context) {
         try {
             MediaManager.get()
         } catch (e: Exception) {
@@ -254,25 +286,41 @@ object CloudinaryHelper {
             config["cloud_name"] = CLOUD_NAME
             MediaManager.init(context.applicationContext, config)
         }
+    }
 
+    // Fungsi Lama (Upload pakai Uri)
+    fun uploadImage(context: Context, uri: Uri, onResult: (String?) -> Unit) {
+        init(context)
         MediaManager.get().upload(uri)
             .unsigned(UPLOAD_PRESET)
-            .option("folder", "absensi_masjid") // Opsional: nama folder di cloudinary
-            .callback(object : UploadCallback {
-                override fun onStart(requestId: String) {}
-                override fun onProgress(requestId: String, bytes: Long, totalBytes: Long) {}
-                override fun onSuccess(requestId: String, resultData: Map<*, *>) {
-                    // Ambil URL aman (https)
-                    val url = resultData["secure_url"] as? String
-                    onResult(url)
-                }
-                override fun onError(requestId: String, error: ErrorInfo) {
-                    Log.e("Cloudinary", "Error: ${error.description}")
-                    onResult(null)
-                }
-                override fun onReschedule(requestId: String, error: ErrorInfo) {}
-            })
+            .option("folder", "absensi_masjid")
+            .callback(createCallback(onResult))
             .dispatch()
+    }
+
+    // Fungsi Baru (Upload pakai File Path String untuk hasil kompresi)
+    fun uploadFile(context: Context, filePath: String, onResult: (String?) -> Unit) {
+        init(context)
+        MediaManager.get().upload(filePath)
+            .unsigned(UPLOAD_PRESET)
+            .option("folder", "absensi_masjid")
+            .callback(createCallback(onResult))
+            .dispatch()
+    }
+
+    // Callback Helper agar tidak duplikasi kode
+    private fun createCallback(onResult: (String?) -> Unit) = object : UploadCallback {
+        override fun onStart(requestId: String) {}
+        override fun onProgress(requestId: String, bytes: Long, totalBytes: Long) {}
+        override fun onSuccess(requestId: String, resultData: Map<*, *>) {
+            val url = resultData["secure_url"] as? String
+            onResult(url)
+        }
+        override fun onError(requestId: String, error: ErrorInfo) {
+            Log.e("Cloudinary", "Error: ${error.description}")
+            onResult(null)
+        }
+        override fun onReschedule(requestId: String, error: ErrorInfo) {}
     }
 }
 
@@ -349,7 +397,7 @@ fun PremiumOnlineSection(streamingUrl: String, userId: String?, scheduleId: Stri
 fun PremiumOfflineSection(
     hasAttendance: Boolean,
     photoUri: Uri?,
-    isLoading: Boolean, // Parameter Baru
+    isLoading: Boolean,
     onUploadClick: () -> Unit,
     onSubmit: () -> Unit
 ) {
@@ -373,7 +421,7 @@ fun PremiumOfflineSection(
                         .size(160.dp).clip(RoundedCornerShape(20.dp))
                         .background(BgPremium)
                         .border(BorderStroke(2.dp, Color.Gray), RoundedCornerShape(20.dp))
-                        .clickable(enabled = !isLoading) { onUploadClick() }, // Disable klik saat loading
+                        .clickable(enabled = !isLoading) { onUploadClick() },
                     contentAlignment = Alignment.Center
                 ) {
                     if (photoUri != null) {
@@ -394,7 +442,7 @@ fun PremiumOfflineSection(
                     modifier = Modifier.fillMaxWidth().height(50.dp),
                     shape = RoundedCornerShape(12.dp),
                     colors = ButtonDefaults.buttonColors(containerColor = EmeraldDeep),
-                    enabled = photoUri != null && !isLoading // Disable tombol saat loading
+                    enabled = photoUri != null && !isLoading
                 ) {
                     if (isLoading) {
                         CircularProgressIndicator(color = White, modifier = Modifier.size(24.dp))
@@ -410,16 +458,8 @@ fun PremiumOfflineSection(
 }
 
 fun extractYouTubeId(url: String): String? {
-    // Pola regex yang lebih lengkap menangani berbagai jenis link YouTube
-    // Termasuk: /live/, /embed/, /v/, youtu.be, dan parameter ?v=
     val pattern = "(?:youtube\\.com\\/(?:[^\\/]+\\/.+\\/|(?:v|e(?:mbed)?|live)\\/|.*[?&]v=)|youtu\\.be\\/)([^\"&?\\/\\s]{11})"
-
     val compiledPattern = java.util.regex.Pattern.compile(pattern)
     val matcher = compiledPattern.matcher(url)
-
-    return if (matcher.find()) {
-        matcher.group(1) // Mengambil ID video (11 karakter)
-    } else {
-        null
-    }
+    return if (matcher.find()) matcher.group(1) else null
 }

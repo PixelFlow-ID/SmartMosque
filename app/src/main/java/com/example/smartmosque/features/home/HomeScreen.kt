@@ -36,6 +36,14 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
 import coil.compose.AsyncImage
+
+// --- IMPORTS KHUSUS UNTUK KOMPRESI ---
+import com.example.smartmosque.utils.ImageUtils
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import java.io.File
+// -------------------------------------
+
 import com.example.smartmosque.features.auth.AuthViewModel
 import com.example.smartmosque.features.donation.PaymentMethod
 import com.example.smartmosque.ui.theme.*
@@ -46,7 +54,6 @@ import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.firestore
 import com.google.firebase.storage.FirebaseStorage
 import java.text.NumberFormat
-import java.util.Date
 import java.util.Locale
 import java.util.UUID
 
@@ -208,7 +215,7 @@ fun HomeScreen(
     }
 }
 
-// --- KOMPONEN GRAFIK ANIMASI (LABEL SUDAH DIPERBAIKI) ---
+// --- KOMPONEN GRAFIK ANIMASI ---
 @Composable
 fun AnimatedEmeraldCard(homeViewModel: HomeViewModel) {
     val eventsThisMonth by homeViewModel.eventsThisMonth.collectAsState()
@@ -279,7 +286,6 @@ fun AnimatedEmeraldCard(homeViewModel: HomeViewModel) {
                         Spacer(modifier = Modifier.width(12.dp))
                         Column {
                             Text("Total", color = Color.White.copy(alpha = 0.9f), fontSize = 12.sp, fontWeight = FontWeight.Medium)
-                            // UPDATE: Label diganti agar sesuai konteks "Partisipan Kegiatan"
                             Text("Kehadiran", color = Color.White.copy(alpha = 0.8f), fontSize = 11.sp)
                         }
                     }
@@ -347,6 +353,10 @@ fun InfaqPaymentDialog(amount: Long, categoryName: String, authViewModel: AuthVi
     val context = LocalContext.current
     val currentUser by authViewModel.currentUser.collectAsState()
     val userId = currentUser?.uid ?: ""
+
+    // Scope untuk proses background (Kompresi & Upload)
+    val scope = rememberCoroutineScope()
+
     var imageUri by remember { mutableStateOf<Uri?>(null) }
     var isUploading by remember { mutableStateOf(false) }
     var paymentMethods by remember { mutableStateOf<List<PaymentMethod>>(emptyList()) }
@@ -387,13 +397,64 @@ fun InfaqPaymentDialog(amount: Long, categoryName: String, authViewModel: AuthVi
         },
         confirmButton = {
             Button(onClick = {
-                if (imageUri == null) Toast.makeText(context, "Upload bukti dulu", Toast.LENGTH_SHORT).show()
-                else {
-                    isUploading = true; val ref = FirebaseStorage.getInstance().reference.child("proofs/infaq/${UUID.randomUUID()}.jpg")
-                    ref.putFile(imageUri!!).addOnSuccessListener { t -> t.storage.downloadUrl.addOnSuccessListener { uri ->
-                        val data = hashMapOf("type" to "INFAQ", "category" to categoryName, "amount" to amount, "status" to "PENDING", "date" to Timestamp.now(), "userId" to userId, "proofUrl" to uri.toString(), "method" to "MANUAL")
-                        Firebase.firestore.collection("donations").add(data).addOnSuccessListener { isUploading = false; onSuccess() }
-                    }}.addOnFailureListener { isUploading = false }
+                if (imageUri == null) {
+                    Toast.makeText(context, "Upload bukti dulu", Toast.LENGTH_SHORT).show()
+                } else {
+                    isUploading = true
+
+                    // --- LOGIKA KOMPRESI DAN UPLOAD ---
+                    scope.launch(Dispatchers.IO) {
+                        // 1. Kompres Gambar
+                        val compressedFile = ImageUtils.compressImage(context, imageUri!!)
+
+                        if (compressedFile != null) {
+                            val compressedUri = Uri.fromFile(compressedFile)
+                            val ref = FirebaseStorage.getInstance().reference.child("proofs/infaq/${UUID.randomUUID()}.jpg")
+
+                            // 2. Upload File yang sudah dikompres
+                            ref.putFile(compressedUri)
+                                .addOnSuccessListener { taskSnapshot ->
+                                    // 3. Ambil URL Download
+                                    taskSnapshot.storage.downloadUrl.addOnSuccessListener { uri ->
+                                        val data = hashMapOf(
+                                            "type" to "INFAQ",
+                                            "category" to categoryName,
+                                            "amount" to amount,
+                                            "status" to "PENDING",
+                                            "date" to Timestamp.now(),
+                                            "userId" to userId,
+                                            "proofUrl" to uri.toString(),
+                                            "method" to "MANUAL"
+                                        )
+
+                                        // 4. Simpan Data ke Firestore
+                                        Firebase.firestore.collection("donations").add(data)
+                                            .addOnSuccessListener {
+                                                // 5. Bersihkan cache dan Update UI
+                                                try { compressedFile.delete() } catch (e: Exception) {}
+                                                scope.launch(Dispatchers.Main) {
+                                                    isUploading = false
+                                                    onSuccess()
+                                                }
+                                            }
+                                            .addOnFailureListener {
+                                                scope.launch(Dispatchers.Main) { isUploading = false }
+                                            }
+                                    }
+                                }
+                                .addOnFailureListener {
+                                    scope.launch(Dispatchers.Main) {
+                                        isUploading = false
+                                        Toast.makeText(context, "Gagal upload gambar", Toast.LENGTH_SHORT).show()
+                                    }
+                                }
+                        } else {
+                            scope.launch(Dispatchers.Main) {
+                                isUploading = false
+                                Toast.makeText(context, "Gagal memproses gambar", Toast.LENGTH_SHORT).show()
+                            }
+                        }
+                    }
                 }
             }, modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColors(containerColor = EmeraldDeep), enabled = !isUploading) { if(isUploading) CircularProgressIndicator(color = White, modifier = Modifier.size(20.dp)) else Text("Kirim Bukti", color = White) }
         },

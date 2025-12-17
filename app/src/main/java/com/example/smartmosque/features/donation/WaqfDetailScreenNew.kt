@@ -37,22 +37,23 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
 import coil.compose.AsyncImage
+
+// --- IMPORT UNTUK LOGIC ---
 import com.example.smartmosque.features.auth.AuthViewModel
 import com.example.smartmosque.model.WaqfProject
+import com.example.smartmosque.utils.ImageUtils // <-- IMPORT FILE UTILS YANG BARU DIBUAT
 import com.google.firebase.firestore.FirebaseFirestore
-// import com.google.firebase.storage.FirebaseStorage <-- DIHAPUS
-
-// --- IMPORT CLOUDINARY ---
 import com.cloudinary.android.MediaManager
 import com.cloudinary.android.callback.ErrorInfo
 import com.cloudinary.android.callback.UploadCallback
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 
 import java.text.NumberFormat
 import java.util.Date
 import java.util.Locale
-import java.util.UUID
 
-// --- IMPORT WARNA TEMA (Sesuaikan dengan file theme Anda) ---
+// --- IMPORT WARNA TEMA (Pastikan ini sesuai project Anda) ---
 import com.example.smartmosque.ui.theme.GreenPrimary
 import com.example.smartmosque.ui.theme.EmeraldDeep
 import com.example.smartmosque.ui.theme.White
@@ -99,19 +100,17 @@ fun WaqfDetailScreenNew(
 
     Scaffold(
         containerColor = BgPremium,
-        // contentWindowInsets(0.dp) membuat layout "Immersive" (gambar sampai belakang status bar)
         contentWindowInsets = WindowInsets(0.dp),
         topBar = {
             CenterAlignedTopAppBar(
-                title = { /* Kosongkan Judul agar fokus ke gambar */ },
+                title = { },
                 navigationIcon = {
-                    // Tombol Back Custom (Bulat & Semi Transparan)
                     Surface(
                         onClick = { navController.popBackStack() },
                         shape = CircleShape,
-                        color = White.copy(alpha = 0.5f), // Efek Glass
+                        color = White.copy(alpha = 0.5f),
                         modifier = Modifier
-                            .padding(start = 16.dp, top = 8.dp) // Sesuaikan padding agar pas
+                            .padding(start = 16.dp, top = 8.dp)
                             .size(40.dp),
                         shadowElevation = 4.dp
                     ) {
@@ -119,26 +118,23 @@ fun WaqfDetailScreenNew(
                             Icon(
                                 imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                                 contentDescription = "Kembali",
-                                tint = Color.Black // Icon hitam agar kontras
+                                tint = Color.Black
                             )
                         }
                     }
                 },
                 colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
-                    containerColor = Color.Transparent // Bar transparan
+                    containerColor = Color.Transparent
                 )
             )
         }
     ) { paddingValues ->
-        // LOGIKA KONTEN UTAMA
         if (project == null) {
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 CircularProgressIndicator(color = EmeraldDeep)
             }
         } else {
             val p = project!!
-
-            // Hitung Progress
             val progress = if (p.targetAmount > 0) p.collectedAmount.toFloat() / p.targetAmount.toFloat() else 0f
             val collectedStr = formatRupiah(p.collectedAmount)
             val targetStr = formatRupiah(p.targetAmount)
@@ -147,10 +143,9 @@ fun WaqfDetailScreenNew(
                 modifier = Modifier
                     .fillMaxSize()
                     .verticalScroll(rememberScrollState())
-                    // Kita hanya pakai padding bawah, padding atas diabaikan agar gambar full screen
                     .padding(bottom = paddingValues.calculateBottomPadding())
             ) {
-                // 1. HERO IMAGE (FULL SCREEN WIDTH & HEIGHT)
+                // HERO IMAGE
                 Box(modifier = Modifier.height(350.dp).fillMaxWidth()) {
                     AsyncImage(
                         model = p.imageUrl,
@@ -158,7 +153,6 @@ fun WaqfDetailScreenNew(
                         contentScale = ContentScale.Crop,
                         modifier = Modifier.fillMaxSize()
                     )
-                    // Gradient Gelap di Bawah Gambar agar teks terbaca/transisi halus
                     Box(
                         modifier = Modifier
                             .fillMaxSize()
@@ -171,13 +165,12 @@ fun WaqfDetailScreenNew(
                     )
                 }
 
-                // 2. KONTEN DETAIL (Overlap ke atas gambar sedikit)
+                // KONTEN
                 Column(
                     modifier = Modifier
-                        .offset(y = (-50).dp) // Tarik ke atas 50dp
+                        .offset(y = (-50).dp)
                         .padding(horizontal = 20.dp)
                 ) {
-                    // --- KARTU UTAMA ---
                     Card(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -186,7 +179,6 @@ fun WaqfDetailScreenNew(
                         colors = CardDefaults.cardColors(containerColor = White)
                     ) {
                         Column(modifier = Modifier.padding(20.dp)) {
-                            // Badge Kategori
                             Surface(
                                 color = EmeraldDeep.copy(alpha = 0.1f),
                                 shape = RoundedCornerShape(6.dp)
@@ -199,10 +191,7 @@ fun WaqfDetailScreenNew(
                                     modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
                                 )
                             }
-
                             Spacer(modifier = Modifier.height(8.dp))
-
-                            // Judul Project
                             Text(
                                 text = p.title,
                                 fontSize = 20.sp,
@@ -210,10 +199,7 @@ fun WaqfDetailScreenNew(
                                 color = TextColorPrimary,
                                 lineHeight = 28.sp
                             )
-
                             Spacer(modifier = Modifier.height(20.dp))
-
-                            // Progress Bar
                             Box(
                                 modifier = Modifier
                                     .fillMaxWidth()
@@ -229,10 +215,7 @@ fun WaqfDetailScreenNew(
                                         .background(Brush.horizontalGradient(listOf(EmeraldDeep, GreenPrimary)))
                                 )
                             }
-
                             Spacer(modifier = Modifier.height(12.dp))
-
-                            // Info Nominal
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
                                 horizontalArrangement = Arrangement.SpaceBetween
@@ -250,20 +233,11 @@ fun WaqfDetailScreenNew(
                     }
 
                     Spacer(modifier = Modifier.height(24.dp))
-
-                    // --- DESKRIPSI ---
                     Text("Tentang Program", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = TextColorPrimary)
                     Spacer(modifier = Modifier.height(8.dp))
-                    Text(
-                        text = p.description,
-                        color = TextColorSecondary,
-                        fontSize = 14.sp,
-                        lineHeight = 24.sp
-                    )
-
+                    Text(text = p.description, color = TextColorSecondary, fontSize = 14.sp, lineHeight = 24.sp)
                     Spacer(modifier = Modifier.height(32.dp))
 
-                    // --- INPUT CARD ---
                     Card(
                         shape = RoundedCornerShape(16.dp),
                         colors = CardDefaults.cardColors(containerColor = White),
@@ -272,7 +246,6 @@ fun WaqfDetailScreenNew(
                         Column(modifier = Modifier.padding(16.dp)) {
                             Text("Mau Wakaf Berapa?", fontWeight = FontWeight.Bold, fontSize = 14.sp)
                             Spacer(modifier = Modifier.height(12.dp))
-
                             OutlinedTextField(
                                 value = amountText,
                                 onValueChange = { if (it.all { char -> char.isDigit() }) amountText = it },
@@ -287,9 +260,7 @@ fun WaqfDetailScreenNew(
                                     cursorColor = EmeraldDeep
                                 )
                             )
-
                             Spacer(modifier = Modifier.height(16.dp))
-
                             Button(
                                 onClick = {
                                     if (amountText.isEmpty() || amountText.toLong() < 10000) {
@@ -307,14 +278,12 @@ fun WaqfDetailScreenNew(
                             }
                         }
                     }
-
                     Spacer(modifier = Modifier.height(50.dp))
                 }
             }
         }
     }
 
-    // --- DIALOG PEMBAYARAN ---
     if (showDialog && project != null) {
         ManualTransferDialogNew(
             amount = amountText.toLongOrNull() ?: 0L,
@@ -331,10 +300,6 @@ fun WaqfDetailScreenNew(
     }
 }
 
-// ==========================================
-// KOMPONEN PENDUKUNG (DIALOG, CARD, DLL)
-// ==========================================
-
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ManualTransferDialogNew(
@@ -349,15 +314,15 @@ fun ManualTransferDialogNew(
     val currentUser by authViewModel.currentUser.collectAsState()
     val userId = currentUser?.uid ?: ""
 
-    // State Upload
+    // COROUTINE SCOPE UNTUK BACKGROUND PROCESS
+    val scope = rememberCoroutineScope()
+
     var imageUri by remember { mutableStateOf<Uri?>(null) }
     var isUploading by remember { mutableStateOf(false) }
 
-    // State Payment Methods
     var paymentMethods by remember { mutableStateOf<List<PaymentMethod>>(emptyList()) }
     var isLoadingMethods by remember { mutableStateOf(true) }
 
-    // Fetch Payment Methods
     LaunchedEffect(Unit) {
         FirebaseFirestore.getInstance().collection("payment_methods")
             .get()
@@ -367,10 +332,7 @@ fun ManualTransferDialogNew(
             }
             .addOnFailureListener {
                 isLoadingMethods = false
-                // Fallback Dummy jika gagal fetch
-                paymentMethods = listOf(
-                    PaymentMethod("BSI", "Masjid Agung", "7289983273", "", "BANK")
-                )
+                paymentMethods = listOf(PaymentMethod("BSI", "Masjid Agung", "7289983273", "", "BANK"))
             }
     }
 
@@ -395,7 +357,6 @@ fun ManualTransferDialogNew(
                     .heightIn(max = 550.dp)
                     .verticalScroll(rememberScrollState())
             ) {
-                // Info Total
                 Text("Total Donasi:", fontSize = 12.sp, color = TextColorSecondary)
                 Text(formatRupiah(amount), fontSize = 24.sp, fontWeight = FontWeight.Bold, color = EmeraldDeep)
 
@@ -408,7 +369,6 @@ fun ManualTransferDialogNew(
                         CircularProgressIndicator(color = EmeraldDeep, modifier = Modifier.size(30.dp))
                     }
                 } else {
-                    // 1. LIST BANK
                     val banks = paymentMethods.filter { it.type == "BANK" }
                     if (banks.isNotEmpty()) {
                         Text("Transfer Bank:", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = TextColorPrimary)
@@ -420,7 +380,6 @@ fun ManualTransferDialogNew(
                         Spacer(modifier = Modifier.height(16.dp))
                     }
 
-                    // 2. QRIS
                     val qris = paymentMethods.find { it.type == "QRIS" }
                     if (qris != null) {
                         Text("Scan QRIS:", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = TextColorPrimary)
@@ -454,7 +413,6 @@ fun ManualTransferDialogNew(
                 HorizontalDivider(color = GrayInputBackground)
                 Spacer(modifier = Modifier.height(16.dp))
 
-                // 3. UPLOAD BUKTI
                 Text("Upload Bukti Transfer", fontWeight = FontWeight.Bold, color = TextColorPrimary)
                 Spacer(modifier = Modifier.height(8.dp))
 
@@ -490,50 +448,72 @@ fun ManualTransferDialogNew(
                     } else {
                         isUploading = true
 
-                        // --- UPLOAD KE CLOUDINARY ---
-                        MediaManager.get().upload(imageUri)
-                            .unsigned("masjid_upload")
-                            .callback(object : UploadCallback {
-                                override fun onStart(requestId: String) {}
-                                override fun onProgress(requestId: String, bytes: Long, totalBytes: Long) {}
+                        // --- PROSES KOMPRESI DAN UPLOAD ---
+                        scope.launch(Dispatchers.IO) {
+                            // 1. Kompres Gambar
+                            val compressedFile = ImageUtils.compressImage(context, imageUri!!)
 
-                                override fun onSuccess(requestId: String, resultData: Map<*, *>) {
-                                    // 1. Ambil URL Gambar dari Cloudinary
-                                    val downloadUrl = resultData["secure_url"].toString()
+                            if (compressedFile != null) {
+                                // 2. Upload ke Cloudinary menggunakan File Path
+                                MediaManager.get().upload(compressedFile.absolutePath)
+                                    .unsigned("masjid_upload")
+                                    .callback(object : UploadCallback {
+                                        override fun onStart(requestId: String) {}
+                                        override fun onProgress(requestId: String, bytes: Long, totalBytes: Long) {}
 
-                                    // 2. Simpan Data ke Firestore (Sama seperti sebelumnya)
-                                    val db = FirebaseFirestore.getInstance()
-                                    val donationData = hashMapOf(
-                                        "projectId" to projectId,
-                                        "amount" to amount,
-                                        "category" to "Wakaf",
-                                        "status" to "PENDING",
-                                        "date" to Date(),
-                                        "userId" to userId,
-                                        "method" to "MANUAL/QRIS",
-                                        "proofUrl" to downloadUrl, // URL dari Cloudinary
-                                        "type" to "WAKAF"
-                                    )
+                                        override fun onSuccess(requestId: String, resultData: Map<*, *>) {
+                                            val downloadUrl = resultData["secure_url"].toString()
 
-                                    db.collection("donations").add(donationData)
-                                        .addOnSuccessListener {
-                                            isUploading = false
-                                            onSuccess()
+                                            // 3. Simpan ke Firestore
+                                            val db = FirebaseFirestore.getInstance()
+                                            val donationData = hashMapOf(
+                                                "projectId" to projectId,
+                                                "amount" to amount,
+                                                "category" to "Wakaf",
+                                                "status" to "PENDING",
+                                                "date" to Date(),
+                                                "userId" to userId,
+                                                "method" to "MANUAL/QRIS",
+                                                "proofUrl" to downloadUrl,
+                                                "type" to "WAKAF"
+                                            )
+
+                                            db.collection("donations").add(donationData)
+                                                .addOnSuccessListener {
+                                                    isUploading = false
+                                                    // Hapus file cache agar hemat memori
+                                                    try { compressedFile.delete() } catch (e: Exception){}
+
+                                                    // Update UI di Main Thread
+                                                    scope.launch(Dispatchers.Main) {
+                                                        onSuccess()
+                                                    }
+                                                }
+                                                .addOnFailureListener {
+                                                    isUploading = false
+                                                    scope.launch(Dispatchers.Main) {
+                                                        Toast.makeText(context, "Gagal simpan database", Toast.LENGTH_SHORT).show()
+                                                    }
+                                                }
                                         }
-                                        .addOnFailureListener {
+
+                                        override fun onError(requestId: String, error: ErrorInfo) {
                                             isUploading = false
-                                            Toast.makeText(context, "Gagal simpan data ke database", Toast.LENGTH_SHORT).show()
+                                            scope.launch(Dispatchers.Main) {
+                                                Toast.makeText(context, "Gagal upload: ${error.description}", Toast.LENGTH_SHORT).show()
+                                            }
                                         }
-                                }
 
-                                override fun onError(requestId: String, error: ErrorInfo) {
-                                    isUploading = false
-                                    Toast.makeText(context, "Gagal upload: ${error.description}", Toast.LENGTH_SHORT).show()
+                                        override fun onReschedule(requestId: String, error: ErrorInfo) {}
+                                    })
+                                    .dispatch()
+                            } else {
+                                isUploading = false
+                                scope.launch(Dispatchers.Main) {
+                                    Toast.makeText(context, "Gagal memproses gambar", Toast.LENGTH_SHORT).show()
                                 }
-
-                                override fun onReschedule(requestId: String, error: ErrorInfo) {}
-                            })
-                            .dispatch()
+                            }
+                        }
                     }
                 },
                 colors = ButtonDefaults.buttonColors(containerColor = EmeraldDeep),
@@ -588,16 +568,13 @@ fun BankItemCardNew(bank: PaymentMethod) {
                     Icon(Icons.Default.AccountBalance, null, tint = TextColorSecondary)
                 }
             }
-
             Spacer(modifier = Modifier.width(12.dp))
-
             Column(modifier = Modifier.weight(1f)) {
                 Text(bank.name, fontWeight = FontWeight.Bold, fontSize = 12.sp, color = TextColorPrimary)
                 Text(bank.accountName, fontSize = 10.sp, color = TextColorSecondary, maxLines = 1)
                 Spacer(modifier = Modifier.height(2.dp))
                 Text(bank.accountNumber, fontWeight = FontWeight.Bold, fontSize = 15.sp, letterSpacing = 0.5.sp, color = EmeraldDeep)
             }
-
             IconButton(onClick = {
                 clipboardManager.setText(AnnotatedString(bank.accountNumber))
                 Toast.makeText(context, "Disalin", Toast.LENGTH_SHORT).show()
@@ -608,7 +585,6 @@ fun BankItemCardNew(bank: PaymentMethod) {
     }
 }
 
-// Helper Format Rupiah
 fun formatRupiah(amount: Long): String {
     return try {
         NumberFormat.getCurrencyInstance(Locale("id", "ID")).format(amount)
