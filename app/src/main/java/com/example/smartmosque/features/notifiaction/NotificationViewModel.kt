@@ -8,6 +8,7 @@ import com.example.smartmosque.model.Schedule
 import com.example.smartmosque.model.WaqfProject
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.firestore.Query
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
@@ -92,13 +93,10 @@ class NotificationViewModel : ViewModel() {
             transaction.update(donationRef, "status", "APPROVED")
 
             // 3. Tambah Saldo ke Program Wakaf Terkait
-            // Pastikan field 'waqfProjectId' ada di data donasi saat user membuat donasi
             val programId = donation.projectId
 
             if (!programId.isNullOrEmpty()) {
-                // Pastikan nama collection sesuai database Anda (waqf_programs atau waqf_projects)
                 val projectRef = db.collection("waqf_programs").document(programId)
-
                 // Gunakan FieldValue.increment agar penambahan saldo akurat (Atomic Operation)
                 transaction.update(projectRef, "collectedAmount", FieldValue.increment(donation.amount))
             }
@@ -116,7 +114,7 @@ class NotificationViewModel : ViewModel() {
             .update("status", "REJECTED")
     }
 
-    // --- JAMAAH: FETCH NOTIFICATIONS ---
+    // --- JAMAAH: FETCH NOTIFICATIONS (FULL FIX) ---
     fun fetchJamaahNotifications(userId: String) {
         viewModelScope.launch {
             _isLoading.value = true
@@ -124,36 +122,68 @@ class NotificationViewModel : ViewModel() {
             val db = FirebaseFirestore.getInstance()
 
             try {
-                // 1. Donasi User (Hapus orderBy)
+                // 1. Donasi User (Diurutkan Tanggal Terbaru)
                 val donRes = db.collection("donations")
                     .whereEqualTo("userId", userId)
-                    .get().await() // Tanpa orderBy aman
+                    .orderBy("date", Query.Direction.DESCENDING)
+                    .limit(10)
+                    .get().await()
 
                 donRes.documents.forEach { doc ->
                     val data = doc.toObject(Donation::class.java)?.copy(id = doc.id)
                     if (data != null) combinedList.add(JamaahNotificationItem.DonationStatus(data))
                 }
 
-                // 2. Jadwal Baru
-                val schRes = db.collection("schedules").limit(5).get().await()
-                schRes.documents.forEach { doc ->
-                    val data = doc.toObject(Schedule::class.java)?.copy(id = doc.id)
-                    if (data != null) combinedList.add(JamaahNotificationItem.NewSchedule(data))
+                // 2. Jadwal Baru (Diurutkan CreatedAt Terbaru & Filter Draft)
+                try {
+                    // COBA CARA CEPAT: Filter langsung di Query
+                    val schRes = db.collection("schedules")
+                        .whereEqualTo("isPublished", true) // Hanya ambil yang published
+                        .orderBy("createdAt", Query.Direction.DESCENDING) // Urutkan yang baru dibuat
+                        .limit(5)
+                        .get().await()
+
+                    schRes.documents.forEach { doc ->
+                        val data = doc.toObject(Schedule::class.java)?.copy(id = doc.id)
+                        if (data != null) {
+                            combinedList.add(JamaahNotificationItem.NewSchedule(data))
+                        }
+                    }
+                } catch (e: Exception) {
+                    // JIKA ERROR INDEX (Firestore belum diindex):
+                    // Lakukan Fallback manual agar data tetap muncul
+                    Log.w("NotifVM", "Index belum ada, melakukan fetch manual: ${e.message}")
+                    val fallbackRes = db.collection("schedules")
+                        .orderBy("createdAt", Query.Direction.DESCENDING)
+                        .limit(10) // Ambil lebih banyak untuk cadangan
+                        .get().await()
+
+                    fallbackRes.documents.forEach { doc ->
+                        val data = doc.toObject(Schedule::class.java)?.copy(id = doc.id)
+                        // Filter manual di Kotlin
+                        if (data != null && data.isPublished) {
+                            combinedList.add(JamaahNotificationItem.NewSchedule(data))
+                        }
+                    }
                 }
 
-                // 3. Wakaf Baru
-                val waqfRes = db.collection("waqf_programs").limit(3).get().await()
+                // 3. Wakaf Baru (Diurutkan CreatedAt Terbaru)
+                val waqfRes = db.collection("waqf_programs")
+                    .orderBy("createdAt", Query.Direction.DESCENDING)
+                    .limit(3)
+                    .get().await()
+
                 waqfRes.documents.forEach { doc ->
                     val data = doc.toObject(WaqfProject::class.java)?.copy(id = doc.id)
                     if (data != null) combinedList.add(JamaahNotificationItem.NewWaqf(data))
                 }
 
-                // Sort Gabungan
+                // Sort Gabungan Akhir (Terbaru di paling atas)
                 _jamaahNotifications.value = combinedList.sortedByDescending { it.timestamp }
                 _isLoading.value = false
 
             } catch (e: Exception) {
-                Log.e("JamaahNotif", "Error: ${e.message}")
+                Log.e("JamaahNotif", "Error General: ${e.message}")
                 _isLoading.value = false
             }
         }

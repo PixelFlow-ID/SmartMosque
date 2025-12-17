@@ -1,7 +1,6 @@
 package com.example.smartmosque.features.donation
 
-import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -12,17 +11,18 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.Verified
+import androidx.compose.material.icons.outlined.VolunteerActivism
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -36,15 +36,14 @@ import com.example.smartmosque.features.auth.AuthViewModel
 import com.example.smartmosque.model.WaqfProject
 import com.example.smartmosque.ui.theme.Screen
 
-// IMPORT WARNA TEMA (Pastikan sesuai dengan file Theme.kt Anda)
+// --- IMPORT WARNA TEMA ---
 import com.example.smartmosque.ui.theme.GreenPrimary
 import com.example.smartmosque.ui.theme.EmeraldDeep
-import com.example.smartmosque.ui.theme.BackgroundLight
+import com.example.smartmosque.ui.theme.BgPremium
 import com.example.smartmosque.ui.theme.TextColorPrimary
 import com.example.smartmosque.ui.theme.TextColorSecondary
 import com.example.smartmosque.ui.theme.White
 import com.example.smartmosque.ui.theme.RedError
-import com.example.smartmosque.ui.theme.BgPremium // Warna Background Soft (Cream/Abu muda)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -58,11 +57,11 @@ fun DonationScreen(
     val authState by authViewModel.authState.collectAsState()
     val currentUser = (authState as? AuthState.Success)?.user
 
-    // Logika Admin
+    // Logika Admin (Tetap Sesuai Permintaan)
     val isAdmin = currentUser?.email == "ramdanidoni244@gmail.com"
 
     Scaffold(
-        containerColor = BgPremium, // Background soft
+        containerColor = BgPremium,
         floatingActionButton = {
             if (isAdmin) {
                 FloatingActionButton(
@@ -83,13 +82,13 @@ fun DonationScreen(
                 .fillMaxSize()
                 .padding(paddingValues)
         ) {
-            // --- 1. HEADER YANG LEBIH CLEAN ---
-            DonationHeader()
+            // --- HEADER BERSIH & ELEGANT ---
+            CleanDonationHeader()
 
-            // --- 2. LIST CONTENT ---
+            // --- LIST KONTEN ---
             LazyColumn(
-                contentPadding = PaddingValues(horizontal = 20.dp, vertical = 10.dp),
-                verticalArrangement = Arrangement.spacedBy(20.dp),
+                contentPadding = PaddingValues(horizontal = 24.dp, vertical = 10.dp),
+                verticalArrangement = Arrangement.spacedBy(24.dp),
                 modifier = Modifier.fillMaxSize()
             ) {
                 if (isLoading) {
@@ -111,7 +110,7 @@ fun DonationScreen(
                             onDelete = { viewModel.deleteProject(project.id, {}, {}) }
                         )
                     }
-                    // Spacer bawah agar FAB tidak menutupi item terakhir
+                    // Spacer agar FAB tidak menutupi item terakhir
                     item { Spacer(modifier = Modifier.height(80.dp)) }
                 }
             }
@@ -119,47 +118,58 @@ fun DonationScreen(
     }
 }
 
-// --- HEADER COMPONENT ---
+// --- KOMPONEN HEADER ---
 @Composable
-fun DonationHeader() {
-    Column(
+fun CleanDonationHeader() {
+    Box(
         modifier = Modifier
             .fillMaxWidth()
-            .background(
-                // Gradient halus di header agar terlihat menyatu
-                Brush.verticalGradient(
-                    colors = listOf(Color.White, BgPremium)
-                )
-            )
-            .padding(top = 24.dp, bottom = 16.dp, start = 24.dp, end = 24.dp)
+            .padding(horizontal = 24.dp, vertical = 20.dp)
     ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Icon(
-                Icons.Default.Favorite,
-                contentDescription = null,
-                tint = EmeraldDeep,
-                modifier = Modifier.size(28.dp)
-            )
-            Spacer(modifier = Modifier.width(12.dp))
+        // Watermark Icon di Kanan (Sangat Samar & Elegan)
+        Icon(
+            imageVector = Icons.Outlined.VolunteerActivism,
+            contentDescription = null,
+            tint = EmeraldDeep.copy(alpha = 0.05f),
+            modifier = Modifier
+                .align(Alignment.CenterEnd)
+                .size(110.dp)
+                .offset(x = 20.dp, y = 10.dp)
+                .rotate(-10f)
+        )
+
+        Column {
             Text(
-                text = "Mari Berwakaf",
-                fontSize = 24.sp,
+                text = "INVESTASI AKHIRAT",
+                fontSize = 11.sp,
+                color = EmeraldDeep,
+                fontWeight = FontWeight.Bold,
+                letterSpacing = 1.sp
+            )
+
+            Spacer(modifier = Modifier.height(4.dp))
+
+            Text(
+                text = "Program Wakaf",
+                fontSize = 28.sp,
                 fontWeight = FontWeight.Bold,
                 color = TextColorPrimary,
                 letterSpacing = (-0.5).sp
             )
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            Text(
+                text = "Salurkan harta terbaikmu untuk\nkebaikan yang mengalir abadi.",
+                fontSize = 14.sp,
+                color = TextColorSecondary,
+                lineHeight = 20.sp
+            )
         }
-        Spacer(modifier = Modifier.height(8.dp))
-        Text(
-            text = "Kekalkan hartamu dengan membangun rumah Allah dan fasilitas umat.",
-            fontSize = 14.sp,
-            color = TextColorSecondary,
-            lineHeight = 20.sp
-        )
     }
 }
 
-// --- CARD UTAMA (TAMPILAN BARU PREMIUM) ---
+// --- KOMPONEN CARD UTAMA ---
 @Composable
 fun PremiumWaqfCard(
     project: WaqfProject,
@@ -167,13 +177,9 @@ fun PremiumWaqfCard(
     onClick: () -> Unit,
     onDelete: () -> Unit
 ) {
-    // Animasi Progress Bar
-    val progressTarget = if (project.targetAmount > 0) project.collectedAmount.toFloat() / project.targetAmount.toFloat() else 0f
-    val animatedProgress by animateFloatAsState(
-        targetValue = progressTarget,
-        animationSpec = tween(durationMillis = 1000),
-        label = "progress"
-    )
+    // Hitung Progress Persen
+    val progressRaw = if (project.targetAmount > 0) project.collectedAmount.toDouble() / project.targetAmount.toDouble() else 0.0
+    val progressPercent = (progressRaw * 100).toInt().coerceIn(0, 100)
 
     // Format Rupiah
     val formatRupiah = java.text.NumberFormat.getCurrencyInstance(java.util.Locale("id", "ID"))
@@ -185,20 +191,20 @@ fun PremiumWaqfCard(
         modifier = Modifier
             .fillMaxWidth()
             .shadow(
-                elevation = 10.dp,
-                shape = RoundedCornerShape(24.dp),
-                spotColor = Color.Black.copy(alpha = 0.05f) // Bayangan sangat halus
+                elevation = 8.dp,
+                shape = RoundedCornerShape(20.dp),
+                spotColor = Color.Black.copy(alpha = 0.06f)
             )
             .clickable { onClick() },
-        shape = RoundedCornerShape(24.dp),
+        shape = RoundedCornerShape(20.dp),
         colors = CardDefaults.cardColors(containerColor = White),
     ) {
         Column {
-            // 1. GAMBAR (FULL WIDTH - HERO IMAGE)
+            // 1. IMAGE HERO
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(180.dp) // Gambar lebih besar agar imersif
+                    .height(190.dp)
             ) {
                 if (project.imageUrl.isNotEmpty()) {
                     AsyncImage(
@@ -211,31 +217,36 @@ fun PremiumWaqfCard(
                     Box(
                         modifier = Modifier
                             .fillMaxSize()
-                            .background(Color(0xFFF0FDF4)), // Background hijau sangat muda
+                            .background(Color(0xFFF0FDF4)),
                         contentAlignment = Alignment.Center
                     ) {
                         Icon(Icons.Default.Verified, null, tint = EmeraldDeep.copy(alpha = 0.3f), modifier = Modifier.size(64.dp))
                     }
                 }
 
-                // Badge "Sedang Berjalan"
+                // Badge Percent (Floating di atas gambar)
                 Surface(
                     modifier = Modifier
                         .padding(16.dp)
-                        .align(Alignment.TopStart),
-                    shape = RoundedCornerShape(50),
-                    color = White.copy(alpha = 0.9f)
+                        .align(Alignment.BottomEnd),
+                    shape = RoundedCornerShape(12.dp),
+                    color = White,
+                    shadowElevation = 6.dp
                 ) {
-                    Text(
-                        text = "Sedang Berjalan",
-                        fontSize = 10.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = EmeraldDeep,
-                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
-                    )
+                    Row(
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "$progressPercent%",
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = EmeraldDeep
+                        )
+                    }
                 }
 
-                // Tombol Delete Admin (Overlay)
+                // Tombol Delete Admin
                 if (isAdmin) {
                     Surface(
                         modifier = Modifier
@@ -243,7 +254,7 @@ fun PremiumWaqfCard(
                             .align(Alignment.TopEnd)
                             .clickable { onDelete() },
                         shape = CircleShape,
-                        color = White,
+                        color = White.copy(alpha = 0.9f),
                         shadowElevation = 4.dp
                     ) {
                         Icon(
@@ -256,43 +267,41 @@ fun PremiumWaqfCard(
                 }
             }
 
-            // 2. KONTEN DESKRIPSI
+            // 2. KONTEN INFO
             Column(modifier = Modifier.padding(20.dp)) {
+                // Label Status
+                Text(
+                    text = "SEDANG BERJALAN",
+                    fontSize = 10.sp,
+                    color = GreenPrimary,
+                    fontWeight = FontWeight.Bold,
+                    letterSpacing = 0.5.sp
+                )
+
+                Spacer(modifier = Modifier.height(4.dp))
+
+                // Judul
                 Text(
                     text = project.title,
                     fontSize = 18.sp,
                     fontWeight = FontWeight.Bold,
                     color = TextColorPrimary,
                     maxLines = 2,
-                    overflow = TextOverflow.Ellipsis
+                    overflow = TextOverflow.Ellipsis,
+                    lineHeight = 24.sp
                 )
 
                 Spacer(modifier = Modifier.height(16.dp))
 
-                // Progress Bar Custom yang Tebal dan Bulat
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(10.dp)
-                        .clip(RoundedCornerShape(50))
-                        .background(Color(0xFFF1F5F9)) // Abu sangat muda
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth(animatedProgress)
-                            .fillMaxHeight()
-                            .clip(RoundedCornerShape(50))
-                            .background(
-                                Brush.horizontalGradient(
-                                    colors = listOf(EmeraldDeep, GreenPrimary)
-                                )
-                            )
-                    )
-                }
+                // --- PROGRESS BAR DENGAN ANIMASI SHIMMER ---
+                ShimmerProgressBar(
+                    currentAmount = project.collectedAmount.toDouble(),
+                    targetAmount = project.targetAmount.toDouble()
+                )
 
                 Spacer(modifier = Modifier.height(12.dp))
 
-                // Info Angka
+                // Angka Donasi
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
@@ -300,23 +309,27 @@ fun PremiumWaqfCard(
                 ) {
                     Column {
                         Text("Terkumpul", fontSize = 11.sp, color = TextColorSecondary)
-                        Spacer(modifier = Modifier.height(2.dp))
                         Text(
                             text = collectedStr,
-                            fontSize = 15.sp,
+                            fontSize = 14.sp,
                             fontWeight = FontWeight.Bold,
-                            color = EmeraldDeep
+                            color = TextColorPrimary
                         )
                     }
 
+                    // Garis Pemisah Kecil
+                    Box(modifier = Modifier
+                        .height(20.dp)
+                        .width(1.dp)
+                        .background(Color.LightGray.copy(alpha = 0.5f)))
+
                     Column(horizontalAlignment = Alignment.End) {
                         Text("Target", fontSize = 11.sp, color = TextColorSecondary)
-                        Spacer(modifier = Modifier.height(2.dp))
                         Text(
                             text = targetStr,
-                            fontSize = 13.sp,
-                            fontWeight = FontWeight.Medium,
-                            color = TextColorSecondary.copy(alpha = 0.7f)
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = TextColorSecondary
                         )
                     }
                 }
@@ -325,7 +338,67 @@ fun PremiumWaqfCard(
     }
 }
 
-// --- STATE KOSONG ---
+// --- KOMPONEN ANIMASI PROGRESS BAR (SHIMMER) ---
+@Composable
+fun ShimmerProgressBar(
+    currentAmount: Double,
+    targetAmount: Double,
+    modifier: Modifier = Modifier
+) {
+    // Hitung progress 0.0 - 1.0
+    val progressRaw = if (targetAmount > 0) currentAmount / targetAmount else 0.0
+    val progressClamped = progressRaw.toFloat().coerceIn(0f, 1f)
+
+    // Animasi 'Isi' Bar saat pertama muncul
+    val animatedProgress by animateFloatAsState(
+        targetValue = progressClamped,
+        animationSpec = tween(durationMillis = 1500, easing = FastOutSlowInEasing),
+        label = "fill"
+    )
+
+    // Animasi 'Kilau' (Shimmer) bergerak
+    val infiniteTransition = rememberInfiniteTransition(label = "shimmer")
+    val shimmerTranslate by infiniteTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = 1000f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 2000, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "shimmer_move"
+    )
+
+    // Warna gradient shimmer (Hijau Tua -> Hijau Terang -> Hijau Tua)
+    val shimmerColors = listOf(
+        EmeraldDeep,
+        Color(0xFF4ADE80), // Lime Green cerah
+        EmeraldDeep
+    )
+
+    val shimmerBrush = Brush.linearGradient(
+        colors = shimmerColors,
+        start = Offset(shimmerTranslate - 300f, 0f),
+        end = Offset(shimmerTranslate, 0f)
+    )
+
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .height(10.dp)
+            .clip(RoundedCornerShape(50))
+            .background(Color(0xFFE2E8F0)) // Background track abu-abu
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth(animatedProgress)
+                .fillMaxHeight()
+                .clip(RoundedCornerShape(50))
+                .background(brush = shimmerBrush) // Gunakan brush animasi
+        )
+    }
+}
+
+// --- TAMPILAN KOSONG ---
 @Composable
 fun EmptyStateDonation() {
     Column(
@@ -335,7 +408,7 @@ fun EmptyStateDonation() {
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         Icon(
-            Icons.Default.Verified,
+            Icons.Outlined.VolunteerActivism,
             contentDescription = null,
             tint = Color.LightGray,
             modifier = Modifier.size(80.dp)

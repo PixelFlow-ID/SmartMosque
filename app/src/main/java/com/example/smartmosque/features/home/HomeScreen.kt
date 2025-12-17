@@ -46,6 +46,7 @@ import java.io.File
 
 import com.example.smartmosque.features.auth.AuthViewModel
 import com.example.smartmosque.features.donation.PaymentMethod
+import com.example.smartmosque.model.Schedule // Import Model Schedule
 import com.example.smartmosque.ui.theme.*
 import com.example.smartmosque.utils.UpcommingEventBox
 import com.google.firebase.Firebase
@@ -82,6 +83,9 @@ fun HomeScreen(
 
     // Notifikasi State
     val hasUnreadNotifications by homeViewModel.hasUnreadNotifications.collectAsState()
+
+    // Ongoing Event State (BARU)
+    val ongoingEvent by homeViewModel.ongoingEvent.collectAsState()
 
     // --- STATE UNTUK FLOW INFAQ ---
     var showInfaqSheet by remember { mutableStateOf(false) }
@@ -163,7 +167,20 @@ fun HomeScreen(
                 // 1. DASHBOARD GRAFIK ANIMASI
                 AnimatedEmeraldCard(homeViewModel)
 
-                Spacer(modifier = Modifier.height(30.dp))
+                Spacer(modifier = Modifier.height(24.dp))
+
+                // --- 1.5 FITUR BARU: ONGOING EVENT (SEDANG BERLANGSUNG) ---
+                if (ongoingEvent != null) {
+                    OngoingLiveCard(
+                        schedule = ongoingEvent!!,
+                        onClick = {
+                            // Navigasi ke Detail Jadwal
+                            navController.navigate("schedule_detail/${ongoingEvent!!.id}")
+                        }
+                    )
+                    Spacer(modifier = Modifier.height(30.dp))
+                }
+                // -----------------------------------------------------------
 
                 // 2. MENU INFAQ
                 Text("Layanan Infaq", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = TextBlack)
@@ -211,6 +228,159 @@ fun HomeScreen(
                     Toast.makeText(context, "Jazakallah! Infaq Anda sedang diverifikasi.", Toast.LENGTH_LONG).show()
                 }
             )
+        }
+    }
+}
+
+// --- ONGOING LIVE CARD ---
+// --- GANTI KODE LAMA 'OngoingLiveCard' DENGAN INI ---
+
+@Composable
+fun OngoingLiveCard(schedule: Schedule, onClick: () -> Unit) {
+    // Animasi Pulse untuk titik merah
+    val infiniteTransition = rememberInfiniteTransition(label = "pulse")
+    val alpha by infiniteTransition.animateFloat(
+        initialValue = 0.4f, targetValue = 1f,
+        animationSpec = infiniteRepeatable(tween(1000), RepeatMode.Reverse), label = "alpha"
+    )
+
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .shadow(
+                elevation = 12.dp,
+                shape = RoundedCornerShape(24.dp),
+                spotColor = Color(0xFFFF5252).copy(alpha = 0.25f)
+            )
+            .clickable { onClick() },
+        shape = RoundedCornerShape(24.dp),
+        colors = CardDefaults.cardColors(containerColor = Color.White),
+        border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFFFEBEE)) // Border merah sangat muda
+    ) {
+        Column(modifier = Modifier.padding(20.dp)) {
+
+            // --- HEADER: BADGE LIVE & WAKTU ---
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                // Badge LIVE
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier
+                        .background(Color(0xFFFFEBEE), RoundedCornerShape(50)) // Background merah muda
+                        .padding(horizontal = 10.dp, vertical = 6.dp)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(8.dp)
+                            .clip(CircleShape)
+                            .background(Color.Red.copy(alpha = alpha)) // Titik berkedip
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        "LIVE SEKARANG",
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color.Red,
+                        letterSpacing = 0.5.sp
+                    )
+                }
+
+                // Jam
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.Schedule, null, tint = TextColorSecondary, modifier = Modifier.size(14.dp))
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text(
+                        text = "${schedule.time} WIB",
+                        fontSize = 12.sp,
+                        color = TextColorSecondary,
+                        fontWeight = FontWeight.Medium
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // --- CONTENT: JUDUL & PEMBICARA ---
+            Row(verticalAlignment = Alignment.Top) {
+                // Icon Kategori Besar
+                Surface(
+                    shape = RoundedCornerShape(16.dp),
+                    color = Color(0xFFFFEBEE), // Background icon merah muda
+                    modifier = Modifier.size(52.dp)
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Icon(
+                            Icons.Default.Mic, // Icon Mic
+                            contentDescription = null,
+                            tint = Color.Red,
+                            modifier = Modifier.size(24.dp)
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.width(16.dp))
+
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = schedule.title,
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = TextColorPrimary,
+                        maxLines = 2,
+                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                        lineHeight = 22.sp
+                    )
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Text(
+                        text = "Ust. ${schedule.speaker}",
+                        fontSize = 14.sp,
+                        color = TextColorSecondary,
+                        fontWeight = FontWeight.Medium
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+            HorizontalDivider(color = Color(0xFFF5F5F5))
+            Spacer(modifier = Modifier.height(12.dp))
+
+            // --- FOOTER: LOKASI & CTA ---
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
+                    Icon(Icons.Default.LocationOn, null, tint = TextColorSecondary, modifier = Modifier.size(14.dp))
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text(
+                        text = schedule.location, // Pastikan di model Schedule ada field 'location'
+                        fontSize = 12.sp,
+                        color = TextColorSecondary,
+                        maxLines = 1,
+                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                    )
+                }
+
+                // Tombol "Gabung" Kecil
+                Surface(
+                    color = EmeraldDeep, // Warna Hijau Tema
+                    shape = RoundedCornerShape(50),
+                    modifier = Modifier.padding(start = 8.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text("Gabung", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Icon(Icons.Default.ArrowForward, null, tint = Color.White, modifier = Modifier.size(10.dp))
+                    }
+                }
+            }
         }
     }
 }

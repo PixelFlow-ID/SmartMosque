@@ -25,5 +25,6 @@ data class Schedule(
     val reminderTime: Long = 0L,
     val createdBy: String = "",
     val createdAt: Timestamp? = null,
-    val isPublished: Boolean = false
+    val isPublished: Boolean = false,
+    val isFinished: Boolean = false
 )

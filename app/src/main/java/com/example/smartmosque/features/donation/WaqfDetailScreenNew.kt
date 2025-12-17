@@ -1,30 +1,27 @@
 package com.example.smartmosque.features.donation
 
+import android.content.Context
 import android.net.Uri
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.background
-import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
+import androidx.compose.animation.*
+import androidx.compose.animation.core.*
+import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.AccountBalance
-import androidx.compose.material.icons.filled.ContentCopy
-import androidx.compose.material.icons.filled.UploadFile
-import androidx.compose.material.icons.filled.VerifiedUser
+import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
@@ -37,32 +34,18 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
 import coil.compose.AsyncImage
-
-// --- IMPORT UNTUK LOGIC ---
-import com.example.smartmosque.features.auth.AuthViewModel
-import com.example.smartmosque.model.WaqfProject
-import com.example.smartmosque.utils.ImageUtils // <-- IMPORT FILE UTILS YANG BARU DIBUAT
-import com.google.firebase.firestore.FirebaseFirestore
 import com.cloudinary.android.MediaManager
 import com.cloudinary.android.callback.ErrorInfo
 import com.cloudinary.android.callback.UploadCallback
+import com.example.smartmosque.features.auth.AuthViewModel
+import com.example.smartmosque.model.WaqfProject
+import com.example.smartmosque.ui.theme.*
+import com.example.smartmosque.utils.ImageUtils
+import com.google.firebase.firestore.FirebaseFirestore
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
-
 import java.text.NumberFormat
-import java.util.Date
-import java.util.Locale
-
-// --- IMPORT WARNA TEMA (Pastikan ini sesuai project Anda) ---
-import com.example.smartmosque.ui.theme.GreenPrimary
-import com.example.smartmosque.ui.theme.EmeraldDeep
-import com.example.smartmosque.ui.theme.White
-import com.example.smartmosque.ui.theme.TextColorPrimary
-import com.example.smartmosque.ui.theme.TextColorSecondary
-import com.example.smartmosque.ui.theme.BackgroundLight
-import com.example.smartmosque.ui.theme.GrayInputBackground
-import com.example.smartmosque.ui.theme.GrayInactive
-import com.example.smartmosque.ui.theme.BgPremium
+import java.util.*
 
 // --- MODEL DATA LOKAL ---
 data class PaymentMethod(
@@ -85,6 +68,9 @@ fun WaqfDetailScreenNew(
     var amountText by remember { mutableStateOf("") }
     var showDialog by remember { mutableStateOf(false) }
 
+    // STATE UNTUK TRIGGER ANIMASI MASUK
+    var isVisible by remember { mutableStateOf(false) }
+
     // Fetch Data Project
     LaunchedEffect(projectId) {
         if (projectId != null) {
@@ -93,6 +79,7 @@ fun WaqfDetailScreenNew(
                     if (snapshot != null && snapshot.exists()) {
                         val data = snapshot.toObject(WaqfProject::class.java)
                         project = data?.copy(id = snapshot.id)
+                        isVisible = true
                     }
                 }
         }
@@ -135,7 +122,38 @@ fun WaqfDetailScreenNew(
             }
         } else {
             val p = project!!
-            val progress = if (p.targetAmount > 0) p.collectedAmount.toFloat() / p.targetAmount.toFloat() else 0f
+
+            // --- ANIMASI PROGRESS BAR (LENGTH) ---
+            val targetProgress = if (p.targetAmount > 0) p.collectedAmount.toFloat() / p.targetAmount.toFloat() else 0f
+            val animatedProgress by animateFloatAsState(
+                targetValue = if (isVisible) targetProgress else 0f,
+                animationSpec = tween(durationMillis = 1500, delayMillis = 500, easing = FastOutSlowInEasing),
+                label = "ProgressLength"
+            )
+
+            // --- ANIMASI KILAUAN (SHIMMER) ---
+            val infiniteTransition = rememberInfiniteTransition(label = "shimmer_tx")
+            val shimmerTranslateAnim by infiniteTransition.animateFloat(
+                initialValue = 0f,
+                targetValue = 1000f, // Jarak tempuh cahaya (lebar layar++)
+                animationSpec = infiniteRepeatable(
+                    animation = tween(durationMillis = 2000, easing = LinearEasing),
+                    repeatMode = RepeatMode.Restart
+                ),
+                label = "shimmer_anim"
+            )
+
+            // Brush Kilauan: Transparan -> Putih -> Transparan
+            val shimmerBrush = Brush.linearGradient(
+                colors = listOf(
+                    Color.Transparent,
+                    Color.White.copy(alpha = 0.5f),
+                    Color.Transparent
+                ),
+                start = Offset(shimmerTranslateAnim - 300f, shimmerTranslateAnim - 300f), // Miring diagonal
+                end = Offset(shimmerTranslateAnim, shimmerTranslateAnim)
+            )
+
             val collectedStr = formatRupiah(p.collectedAmount)
             val targetStr = formatRupiah(p.targetAmount)
 
@@ -145,136 +163,182 @@ fun WaqfDetailScreenNew(
                     .verticalScroll(rememberScrollState())
                     .padding(bottom = paddingValues.calculateBottomPadding())
             ) {
-                // HERO IMAGE
-                Box(modifier = Modifier.height(350.dp).fillMaxWidth()) {
-                    AsyncImage(
-                        model = p.imageUrl,
-                        contentDescription = null,
-                        contentScale = ContentScale.Crop,
-                        modifier = Modifier.fillMaxSize()
-                    )
-                    Box(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .background(
-                                Brush.verticalGradient(
-                                    colors = listOf(Color.Transparent, Color.Black.copy(alpha = 0.6f)),
-                                    startY = 300f
+                // 1. HERO IMAGE
+                AnimatedVisibility(
+                    visible = isVisible,
+                    enter = fadeIn(animationSpec = tween(durationMillis = 800))
+                ) {
+                    Box(modifier = Modifier.height(350.dp).fillMaxWidth()) {
+                        AsyncImage(
+                            model = p.imageUrl,
+                            contentDescription = null,
+                            contentScale = ContentScale.Crop,
+                            modifier = Modifier.fillMaxSize()
+                        )
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .background(
+                                    Brush.verticalGradient(
+                                        colors = listOf(Color.Transparent, Color.Black.copy(alpha = 0.6f)),
+                                        startY = 300f
+                                    )
                                 )
-                            )
-                    )
+                        )
+                    }
                 }
 
-                // KONTEN
+                // KONTEN BAWAH
                 Column(
                     modifier = Modifier
                         .offset(y = (-50).dp)
                         .padding(horizontal = 20.dp)
                 ) {
-                    Card(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .shadow(12.dp, RoundedCornerShape(20.dp), spotColor = Color.Black.copy(alpha = 0.15f)),
-                        shape = RoundedCornerShape(20.dp),
-                        colors = CardDefaults.cardColors(containerColor = White)
+                    // 2. KARTU UTAMA
+                    AnimatedVisibility(
+                        visible = isVisible,
+                        enter = fadeIn(tween(800, delayMillis = 100)) +
+                                slideInVertically(tween(800, delayMillis = 100)) { 50 }
                     ) {
-                        Column(modifier = Modifier.padding(20.dp)) {
-                            Surface(
-                                color = EmeraldDeep.copy(alpha = 0.1f),
-                                shape = RoundedCornerShape(6.dp)
-                            ) {
+                        Card(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .shadow(12.dp, RoundedCornerShape(20.dp), spotColor = Color.Black.copy(alpha = 0.15f)),
+                            shape = RoundedCornerShape(20.dp),
+                            colors = CardDefaults.cardColors(containerColor = White)
+                        ) {
+                            Column(modifier = Modifier.padding(20.dp)) {
+                                Surface(
+                                    color = EmeraldDeep.copy(alpha = 0.1f),
+                                    shape = RoundedCornerShape(6.dp)
+                                ) {
+                                    Text(
+                                        text = "Program Wakaf",
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = EmeraldDeep,
+                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                    )
+                                }
+                                Spacer(modifier = Modifier.height(8.dp))
                                 Text(
-                                    text = "Program Wakaf",
-                                    fontSize = 11.sp,
+                                    text = p.title,
+                                    fontSize = 20.sp,
                                     fontWeight = FontWeight.Bold,
-                                    color = EmeraldDeep,
-                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                    color = TextColorPrimary,
+                                    lineHeight = 28.sp
                                 )
-                            }
-                            Spacer(modifier = Modifier.height(8.dp))
-                            Text(
-                                text = p.title,
-                                fontSize = 20.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = TextColorPrimary,
-                                lineHeight = 28.sp
-                            )
-                            Spacer(modifier = Modifier.height(20.dp))
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .height(10.dp)
-                                    .clip(RoundedCornerShape(50))
-                                    .background(GrayInputBackground)
-                            ) {
+                                Spacer(modifier = Modifier.height(20.dp))
+
+                                // --- PROGRESS BAR DENGAN KILAUAN ---
                                 Box(
                                     modifier = Modifier
-                                        .fillMaxWidth(progress.coerceIn(0f, 1f))
-                                        .fillMaxHeight()
+                                        .fillMaxWidth()
+                                        .height(12.dp)
                                         .clip(RoundedCornerShape(50))
-                                        .background(Brush.horizontalGradient(listOf(EmeraldDeep, GreenPrimary)))
-                                )
-                            }
-                            Spacer(modifier = Modifier.height(12.dp))
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween
-                            ) {
-                                Column {
-                                    Text("Terkumpul", fontSize = 11.sp, color = TextColorSecondary)
-                                    Text(collectedStr, fontSize = 15.sp, fontWeight = FontWeight.Bold, color = EmeraldDeep)
+                                        .background(GrayInputBackground)
+                                ) {
+                                    // Layer 1: Warna Hijau Dasar
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxWidth(animatedProgress.coerceIn(0f, 1f))
+                                            .fillMaxHeight()
+                                            .clip(RoundedCornerShape(50))
+                                            .background(Brush.horizontalGradient(listOf(EmeraldDeep, GreenPrimary)))
+                                    )
+
+                                    // Layer 2: Efek Kilauan Cahaya (Overlay)
+                                    // Hanya muncul di atas area yang hijau
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxWidth(animatedProgress.coerceIn(0f, 1f))
+                                            .fillMaxHeight()
+                                            .clip(RoundedCornerShape(50))
+                                            .background(shimmerBrush) // <--- INI ANIMASINYA
+                                    )
                                 }
-                                Column(horizontalAlignment = Alignment.End) {
-                                    Text("Target", fontSize = 11.sp, color = TextColorSecondary)
-                                    Text(targetStr, fontSize = 14.sp, fontWeight = FontWeight.Bold, color = TextColorPrimary)
+
+                                Spacer(modifier = Modifier.height(12.dp))
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Column {
+                                        Text("Terkumpul", fontSize = 11.sp, color = TextColorSecondary)
+                                        Text(collectedStr, fontSize = 15.sp, fontWeight = FontWeight.Bold, color = EmeraldDeep)
+                                    }
+                                    Column(horizontalAlignment = Alignment.End) {
+                                        Text("Target", fontSize = 11.sp, color = TextColorSecondary)
+                                        Text(targetStr, fontSize = 14.sp, fontWeight = FontWeight.Bold, color = TextColorPrimary)
+                                    }
                                 }
                             }
                         }
                     }
 
                     Spacer(modifier = Modifier.height(24.dp))
-                    Text("Tentang Program", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = TextColorPrimary)
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Text(text = p.description, color = TextColorSecondary, fontSize = 14.sp, lineHeight = 24.sp)
+
+                    // 3. DESKRIPSI
+                    AnimatedVisibility(
+                        visible = isVisible,
+                        enter = fadeIn(tween(800, delayMillis = 200)) +
+                                slideInVertically(tween(800, delayMillis = 200)) { 50 }
+                    ) {
+                        Column {
+                            Text("Tentang Program", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = TextColorPrimary)
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Text(text = p.description, color = TextColorSecondary, fontSize = 14.sp, lineHeight = 24.sp)
+                        }
+                    }
+
                     Spacer(modifier = Modifier.height(32.dp))
 
-                    Card(
-                        shape = RoundedCornerShape(16.dp),
-                        colors = CardDefaults.cardColors(containerColor = White),
-                        elevation = CardDefaults.cardElevation(2.dp)
+                    // 4. INPUT DONASI
+                    AnimatedVisibility(
+                        visible = isVisible,
+                        enter = fadeIn(tween(800, delayMillis = 300)) +
+                                slideInVertically(tween(800, delayMillis = 300)) { 50 }
                     ) {
-                        Column(modifier = Modifier.padding(16.dp)) {
-                            Text("Mau Wakaf Berapa?", fontWeight = FontWeight.Bold, fontSize = 14.sp)
-                            Spacer(modifier = Modifier.height(12.dp))
-                            OutlinedTextField(
-                                value = amountText,
-                                onValueChange = { if (it.all { char -> char.isDigit() }) amountText = it },
-                                placeholder = { Text("Rp 0") },
-                                prefix = { Text("Rp ", fontWeight = FontWeight.Bold) },
-                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                                modifier = Modifier.fillMaxWidth(),
-                                shape = RoundedCornerShape(12.dp),
-                                colors = OutlinedTextFieldDefaults.colors(
-                                    focusedBorderColor = EmeraldDeep,
-                                    unfocusedBorderColor = GrayInactive,
-                                    cursorColor = EmeraldDeep
+                        Card(
+                            shape = RoundedCornerShape(16.dp),
+                            colors = CardDefaults.cardColors(containerColor = White),
+                            elevation = CardDefaults.cardElevation(2.dp)
+                        ) {
+                            Column(modifier = Modifier.padding(16.dp)) {
+                                Text("Mau Wakaf Berapa?", fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                                Spacer(modifier = Modifier.height(12.dp))
+                                OutlinedTextField(
+                                    value = amountText,
+                                    onValueChange = { if (it.all { char -> char.isDigit() }) amountText = it },
+                                    placeholder = { Text("Rp 0") },
+                                    prefix = { Text("Rp ", fontWeight = FontWeight.Bold) },
+                                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                    modifier = Modifier.fillMaxWidth(),
+                                    shape = RoundedCornerShape(12.dp),
+                                    colors = OutlinedTextFieldDefaults.colors(
+                                        focusedBorderColor = EmeraldDeep,
+                                        unfocusedBorderColor = GrayInactive,
+                                        cursorColor = EmeraldDeep
+                                    )
                                 )
-                            )
-                            Spacer(modifier = Modifier.height(16.dp))
-                            Button(
-                                onClick = {
-                                    if (amountText.isEmpty() || amountText.toLong() < 10000) {
-                                        Toast.makeText(context, "Minimal wakaf Rp 10.000", Toast.LENGTH_SHORT).show()
-                                    } else {
-                                        showDialog = true
-                                    }
-                                },
-                                modifier = Modifier.fillMaxWidth().height(50.dp),
-                                shape = RoundedCornerShape(12.dp),
-                                colors = ButtonDefaults.buttonColors(containerColor = EmeraldDeep),
-                                elevation = ButtonDefaults.buttonElevation(8.dp)
-                            ) {
-                                Text("Lanjut Pembayaran", fontWeight = FontWeight.Bold, color = White)
+                                Spacer(modifier = Modifier.height(16.dp))
+                                Button(
+                                    onClick = {
+                                        if (amountText.isEmpty() || amountText.toLong() < 10000) {
+                                            Toast.makeText(context, "Minimal wakaf Rp 10.000", Toast.LENGTH_SHORT).show()
+                                        } else {
+                                            showDialog = true
+                                        }
+                                    },
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .height(50.dp),
+                                    shape = RoundedCornerShape(12.dp),
+                                    colors = ButtonDefaults.buttonColors(containerColor = EmeraldDeep),
+                                    elevation = ButtonDefaults.buttonElevation(8.dp)
+                                ) {
+                                    Text("Lanjut Pembayaran", fontWeight = FontWeight.Bold, color = White)
+                                }
                             }
                         }
                     }
@@ -388,18 +452,22 @@ fun ManualTransferDialogNew(
                             colors = CardDefaults.cardColors(containerColor = White),
                             elevation = CardDefaults.cardElevation(2.dp),
                             shape = RoundedCornerShape(12.dp),
-                            modifier = Modifier.fillMaxWidth().border(1.dp, GrayInactive, RoundedCornerShape(12.dp))
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .border(1.dp, GrayInactive, RoundedCornerShape(12.dp))
                         ) {
                             Column(
                                 modifier = Modifier.padding(16.dp),
                                 horizontalAlignment = Alignment.CenterHorizontally
                             ) {
-                                if(qris.name.isNotEmpty()) Text(qris.name, fontWeight = FontWeight.Bold)
+                                if (qris.name.isNotEmpty()) Text(qris.name, fontWeight = FontWeight.Bold)
                                 Spacer(modifier = Modifier.height(12.dp))
                                 AsyncImage(
                                     model = qris.logoUrl,
                                     contentDescription = "Scan QRIS",
-                                    modifier = Modifier.size(200.dp).clip(RoundedCornerShape(8.dp)),
+                                    modifier = Modifier
+                                        .size(200.dp)
+                                        .clip(RoundedCornerShape(8.dp)),
                                     contentScale = ContentScale.Crop
                                 )
                                 Spacer(modifier = Modifier.height(8.dp))
@@ -427,7 +495,12 @@ fun ManualTransferDialogNew(
                     contentAlignment = Alignment.Center
                 ) {
                     if (imageUri != null) {
-                        AsyncImage(model = imageUri, contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
+                        AsyncImage(
+                            model = imageUri,
+                            contentDescription = null,
+                            contentScale = ContentScale.Crop,
+                            modifier = Modifier.fillMaxSize()
+                        )
                     } else {
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
                             Icon(Icons.Default.UploadFile, null, tint = EmeraldDeep, modifier = Modifier.size(32.dp))
@@ -454,7 +527,7 @@ fun ManualTransferDialogNew(
                             val compressedFile = ImageUtils.compressImage(context, imageUri!!)
 
                             if (compressedFile != null) {
-                                // 2. Upload ke Cloudinary menggunakan File Path
+                                // 2. Upload ke Cloudinary
                                 MediaManager.get().upload(compressedFile.absolutePath)
                                     .unsigned("masjid_upload")
                                     .callback(object : UploadCallback {
@@ -481,10 +554,8 @@ fun ManualTransferDialogNew(
                                             db.collection("donations").add(donationData)
                                                 .addOnSuccessListener {
                                                     isUploading = false
-                                                    // Hapus file cache agar hemat memori
-                                                    try { compressedFile.delete() } catch (e: Exception){}
+                                                    try { compressedFile.delete() } catch (e: Exception) {}
 
-                                                    // Update UI di Main Thread
                                                     scope.launch(Dispatchers.Main) {
                                                         onSuccess()
                                                     }
@@ -518,7 +589,9 @@ fun ManualTransferDialogNew(
                 },
                 colors = ButtonDefaults.buttonColors(containerColor = EmeraldDeep),
                 enabled = !isUploading,
-                modifier = Modifier.fillMaxWidth().height(48.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(48.dp),
                 shape = RoundedCornerShape(10.dp)
             ) {
                 if (isUploading) {
@@ -548,7 +621,9 @@ fun BankItemCardNew(bank: PaymentMethod) {
     Card(
         colors = CardDefaults.cardColors(containerColor = White),
         shape = RoundedCornerShape(12.dp),
-        modifier = Modifier.fillMaxWidth().border(1.dp, GrayInactive.copy(alpha = 0.5f), RoundedCornerShape(12.dp)),
+        modifier = Modifier
+            .fillMaxWidth()
+            .border(1.dp, GrayInactive.copy(alpha = 0.5f), RoundedCornerShape(12.dp)),
         elevation = CardDefaults.cardElevation(0.dp)
     ) {
         Row(
@@ -562,8 +637,13 @@ fun BankItemCardNew(bank: PaymentMethod) {
                     .padding(6.dp),
                 contentAlignment = Alignment.Center
             ) {
-                if(bank.logoUrl.isNotEmpty()) {
-                    AsyncImage(model = bank.logoUrl, contentDescription = bank.name, contentScale = ContentScale.Fit, modifier = Modifier.fillMaxSize())
+                if (bank.logoUrl.isNotEmpty()) {
+                    AsyncImage(
+                        model = bank.logoUrl,
+                        contentDescription = bank.name,
+                        contentScale = ContentScale.Fit,
+                        modifier = Modifier.fillMaxSize()
+                    )
                 } else {
                     Icon(Icons.Default.AccountBalance, null, tint = TextColorSecondary)
                 }
@@ -573,7 +653,13 @@ fun BankItemCardNew(bank: PaymentMethod) {
                 Text(bank.name, fontWeight = FontWeight.Bold, fontSize = 12.sp, color = TextColorPrimary)
                 Text(bank.accountName, fontSize = 10.sp, color = TextColorSecondary, maxLines = 1)
                 Spacer(modifier = Modifier.height(2.dp))
-                Text(bank.accountNumber, fontWeight = FontWeight.Bold, fontSize = 15.sp, letterSpacing = 0.5.sp, color = EmeraldDeep)
+                Text(
+                    bank.accountNumber,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 15.sp,
+                    letterSpacing = 0.5.sp,
+                    color = EmeraldDeep
+                )
             }
             IconButton(onClick = {
                 clipboardManager.setText(AnnotatedString(bank.accountNumber))
@@ -588,5 +674,7 @@ fun BankItemCardNew(bank: PaymentMethod) {
 fun formatRupiah(amount: Long): String {
     return try {
         NumberFormat.getCurrencyInstance(Locale("id", "ID")).format(amount)
-    } catch (e: Exception) { "Rp $amount" }
+    } catch (e: Exception) {
+        "Rp $amount"
+    }
 }
