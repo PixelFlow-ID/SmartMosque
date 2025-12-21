@@ -4,6 +4,7 @@ import android.annotation.SuppressLint
 import android.content.Context
 import android.net.Uri
 import android.util.Log
+import android.view.ViewGroup
 import android.webkit.WebChromeClient
 import android.webkit.WebView
 import android.webkit.WebViewClient
@@ -348,46 +349,108 @@ fun PremiumTabButton(text: String, icon: ImageVector, isSelected: Boolean, modif
 @SuppressLint("SetJavaScriptEnabled")
 @Composable
 fun PremiumOnlineSection(streamingUrl: String, userId: String?, scheduleId: String, currentParticipants: List<String>) {
+    // 1. Ekstrak ID (menggunakan fungsi baru di atas)
     val videoId = remember(streamingUrl) { extractYouTubeId(streamingUrl) }
-    val isAlreadyJoined = remember(userId, currentParticipants) { currentParticipants.contains(userId) }
 
-    Card(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(24.dp), colors = CardDefaults.cardColors(containerColor = White), elevation = CardDefaults.cardElevation(8.dp)) {
+    // 2. Logic Absensi
+    val isAlreadyJoined = remember(userId, currentParticipants) { currentParticipants.contains(userId) }
+    LaunchedEffect(videoId, userId) {
+        if (videoId != null && userId != null && !isAlreadyJoined) {
+            FirebaseFirestore.getInstance().collection("schedules").document(scheduleId)
+                .update("participantsOnline", FieldValue.arrayUnion(userId))
+        }
+    }
+
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(24.dp),
+        colors = CardDefaults.cardColors(containerColor = Color.White),
+        elevation = CardDefaults.cardElevation(8.dp)
+    ) {
         Column {
-            Box(modifier = Modifier.fillMaxWidth().aspectRatio(16f / 9f).background(Color.Black)) {
+            // CONTAINER VIDEO
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .aspectRatio(16f / 9f)
+                    .background(Color.Black)
+            ) {
                 if (videoId != null) {
                     AndroidView(
-                        factory = {
-                            WebView(it).apply {
-                                settings.javaScriptEnabled = true
-                                settings.domStorageEnabled = true
+                        factory = { ctx ->
+                            WebView(ctx).apply {
+                                layoutParams = ViewGroup.LayoutParams(
+                                    ViewGroup.LayoutParams.MATCH_PARENT,
+                                    ViewGroup.LayoutParams.MATCH_PARENT
+                                )
+                                settings.apply {
+                                    javaScriptEnabled = true
+                                    domStorageEnabled = true
+                                    loadWithOverviewMode = true
+                                    useWideViewPort = true
+                                }
                                 webChromeClient = WebChromeClient()
                                 webViewClient = WebViewClient()
+                                // Load URL hanya sekali di factory
+                                loadUrl("https://www.youtube.com/embed/$videoId?playsinline=1&rel=0")
                             }
                         },
-                        update = { it.loadUrl("https://www.youtube.com/embed/$videoId?playsinline=1") },
+                        // Hapus logic loadUrl dari update block agar tidak reload loop
+                        update = { webView ->
+                            // Opsional: Cek jika ID berubah, baru load ulang (jarang terjadi di screen detail)
+                            val currentUrl = webView.url
+                            if (currentUrl == null || !currentUrl.contains(videoId)) {
+                                webView.loadUrl("https://www.youtube.com/embed/$videoId?playsinline=1&rel=0")
+                            }
+                        },
                         modifier = Modifier.fillMaxSize()
                     )
-                    LaunchedEffect(Unit) {
-                        if (userId != null && !isAlreadyJoined) {
-                            FirebaseFirestore.getInstance().collection("schedules").document(scheduleId)
-                                .update("participantsOnline", FieldValue.arrayUnion(userId))
-                        }
-                    }
                 } else {
-                    Column(Modifier.fillMaxSize(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
-                        Icon(Icons.Outlined.VideocamOff, null, tint = White.copy(alpha = 0.5f), modifier = Modifier.size(48.dp))
-                        Text("Siaran belum dimulai", color = White.copy(alpha = 0.7f), fontSize = 12.sp)
+                    // Fallback jika ID gagal diekstrak / URL kosong
+                    Column(
+                        modifier = Modifier.fillMaxSize(),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Outlined.VideocamOff,
+                            contentDescription = null,
+                            tint = Color.White.copy(alpha = 0.5f),
+                            modifier = Modifier.size(48.dp)
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(
+                            text = "Link siaran tidak valid",
+                            color = Color.White.copy(alpha = 0.7f),
+                            fontSize = 12.sp
+                        )
                     }
                 }
             }
+
+            // INFO SECTION
             Column(Modifier.padding(20.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Box(Modifier.size(8.dp).clip(CircleShape).background(if (videoId != null) Color.Red else Color.Gray))
+                    Box(
+                        Modifier
+                            .size(8.dp)
+                            .clip(CircleShape)
+                            .background(if (videoId != null) Color.Red else Color.Gray)
+                    )
                     Spacer(Modifier.width(8.dp))
-                    Text(if (videoId != null) "Sedang Berlangsung" else "Offline", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = if (videoId != null) Color.Red else Color.Gray)
+                    Text(
+                        text = if (videoId != null) "Live Streaming" else "Offline",
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = if (videoId != null) Color.Red else Color.Gray
+                    )
                 }
-                Spacer(Modifier.height(12.dp))
-                Text("Kehadiran online Anda dicatat otomatis saat menonton tayangan ini.", fontSize = 14.sp, color = TextColorSecondary)
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    "Kehadiran online Anda dicatat otomatis saat menonton tayangan ini.",
+                    fontSize = 14.sp,
+                    color = Color.Gray // Ganti TextColorSecondary jika ada error
+                )
             }
         }
     }
@@ -458,8 +521,35 @@ fun PremiumOfflineSection(
 }
 
 fun extractYouTubeId(url: String): String? {
-    val pattern = "(?:youtube\\.com\\/(?:[^\\/]+\\/.+\\/|(?:v|e(?:mbed)?|live)\\/|.*[?&]v=)|youtu\\.be\\/)([^\"&?\\/\\s]{11})"
-    val compiledPattern = java.util.regex.Pattern.compile(pattern)
-    val matcher = compiledPattern.matcher(url)
-    return if (matcher.find()) matcher.group(1) else null
+    if (url.isBlank()) return null
+
+    return try {
+        val uri = Uri.parse(url)
+        val host = uri.host?.lowercase() ?: return null
+
+        when {
+            // Case 1: youtube.com/watch?v=ID
+            host.contains("youtube.com") && uri.getQueryParameter("v") != null -> {
+                uri.getQueryParameter("v")
+            }
+            // Case 2: youtube.com/live/ID  (Format Live yang kamu gunakan)
+            host.contains("youtube.com") && uri.pathSegments.contains("live") -> {
+                val pathSegments = uri.pathSegments
+                val liveIndex = pathSegments.indexOf("live")
+                if (liveIndex + 1 < pathSegments.size) pathSegments[liveIndex + 1] else null
+            }
+            // Case 3: youtube.com/embed/ID
+            host.contains("youtube.com") && uri.pathSegments.contains("embed") -> {
+                uri.lastPathSegment
+            }
+            // Case 4: youtu.be/ID
+            host.contains("youtu.be") -> {
+                uri.lastPathSegment
+            }
+            else -> null
+        }
+    } catch (e: Exception) {
+        e.printStackTrace()
+        null
+    }
 }
