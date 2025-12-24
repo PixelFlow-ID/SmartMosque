@@ -74,6 +74,8 @@ fun AppNavigation() {
 
     val authViewModel: AuthViewModel = viewModel()
     val homeViewModel: HomeViewModel = viewModel()
+    // TAMBAHAN: Shared ViewModel untuk Finance
+    val financeViewModel: com.example.smartmosque.viewmodel.FinanceViewModel = viewModel()
 
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = navBackStackEntry?.destination?.route
@@ -119,7 +121,7 @@ fun AppNavigation() {
             // MAIN FEATURES
             composable(Screen.Home.route) {
                 // PANGGIL HOMESCREEN DARI FILE BARU
-                HomeScreen(navController, authViewModel, homeViewModel)
+                HomeScreen(navController, authViewModel, homeViewModel, financeViewModel)
             }
 
             composable(Screen.Schedule.route) {
@@ -157,6 +159,11 @@ fun AppNavigation() {
                     navController = navController,
                     scheduleId = scheduleId
                 )
+            }
+
+            // FINANCE / LAPORAN KAS
+            composable(Screen.Finance.route) {
+                com.example.smartmosque.ui.screens.finance.FinanceScreen(navController, authViewModel, financeViewModel)
             }
 
             // PROFILE

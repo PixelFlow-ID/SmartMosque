@@ -2,9 +2,7 @@ package com.example.smartmosque.ui.screens.schedule
 
 import android.content.Intent
 import android.provider.CalendarContract
-import android.util.Log
 import android.widget.Toast
-import androidx.compose.animation.core.*
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -37,7 +35,7 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
-// --- IMPORTS TEMA (Sesuaikan jika path package berbeda) ---
+// --- IMPORTS TEMA ---
 import com.example.smartmosque.ui.theme.EmeraldDeep
 import com.example.smartmosque.ui.theme.BgPremium
 import com.example.smartmosque.ui.theme.White
@@ -53,18 +51,20 @@ fun ScheduleScreen(
     scheduleViewModel: ScheduleViewModel = viewModel()
 ) {
     val context = LocalContext.current
+
+    // --- STATE USER & ADMIN ---
     val userRole by authViewModel.userRole.collectAsState()
     val currentUser by authViewModel.currentUser.collectAsState()
     val userId = currentUser?.uid
+
+    // LOGIKA PENENTU ADMIN
+    // Pastikan di database Firestore collection 'users', field 'role' isinya benar-benar "admin"
     val isAdmin = userRole == "admin"
 
     val scheduleList by scheduleViewModel.schedules.collectAsState()
     val isLoading by scheduleViewModel.isLoading.collectAsState()
 
-    // Default filter. Jika ingin defaultnya langsung 'Semua' saat testing, ubah string di bawah.
     var selectedFilter by remember { mutableStateOf("Akan Datang") }
-
-    // Dialog Hapus
     var showDeleteDialog by remember { mutableStateOf(false) }
     var scheduleToDelete by remember { mutableStateOf<Schedule?>(null) }
 
@@ -72,249 +72,162 @@ fun ScheduleScreen(
         SimpleDateFormat("EEEE, d MMMM yyyy", Locale("id", "ID")).format(Date())
     }
 
-    // --- FETCH DATA ---
     LaunchedEffect(Unit) {
-        Log.d("ScheduleScreen", "Screen opened, fetching data...")
         scheduleViewModel.fetchSchedules()
     }
 
-    // --- DEBUG LOGGING ---
-    LaunchedEffect(scheduleList) {
-        Log.d("ScheduleScreen", "Data received: ${scheduleList.size} items")
-        scheduleList.forEach {
-            Log.d("ScheduleScreen", "Item: ${it.title} | Published: ${it.isPublished} | Finished: ${it.isFinished} | Date: ${it.date?.toDate()}")
-        }
-    }
-
-    // --- LOGIKA FILTER ---
+    // --- FILTER DATA ---
+    // --- FILTER DATA ---
     val filteredList = remember(scheduleList, selectedFilter, isAdmin) {
-        // Logika 3 Jam toleransi
-        val threeHoursInMillis = 3 * 60 * 60 * 1000
-        val cutoffTime = Date(System.currentTimeMillis() - threeHoursInMillis)
+        val now = System.currentTimeMillis()
+        val toleransiMs = 2 * 60 * 60 * 1000 // 2 Jam (Sesuai Logika Button)
 
-        val timeFiltered = when (selectedFilter) {
-            "Akan Datang" -> scheduleList.filter {
-                // Tampil jika: Belum finish DAN (Waktunya di masa depan ATAU baru lewat dikit)
-                !it.isFinished && (it.date?.toDate()?.after(cutoffTime) == true)
+        // Base List (Admin lihat semua, User hanya Published ATAU isActive)
+        // FIX: Tambahkan OR isActive agar data lama yang belum punya field isPublished tetap muncul
+        val baseList = if (isAdmin) scheduleList else scheduleList.filter { it.isPublished || it.isActive }
+
+        when (selectedFilter) {
+            "Semua" -> baseList.sortedBy { it.date }
+            "Akan Datang" -> {
+                baseList.filter {
+                    val t = it.date?.toDate()?.time ?: 0L
+                    // Tampilkan jika BELUM selesai (manual) DAN (Waktunya masa depan ATAU masih dalam toleransi durasi)
+                    !it.isFinished && (t > (now - toleransiMs))
+                }.sortedBy { it.date }
             }
-            "Selesai" -> scheduleList.filter {
-                // Tampil jika: Sudah finish ATAU Waktunya sudah lampau
-                it.isFinished || (it.date?.toDate()?.before(cutoffTime) == true)
-            }.sortedByDescending { it.date }
-            else -> scheduleList // "Semua" -> menampilkan semuanya tanpa filter waktu
+            "Selesai" -> {
+                baseList.filter {
+                    val t = it.date?.toDate()?.time ?: 0L
+                    // Tampilkan jika SUDAH selesai (manual) ATAU (Waktunya sudah lewat toleransi)
+                    it.isFinished || (t <= (now - toleransiMs))
+                }.sortedByDescending { it.date }
+            }
+            else -> baseList
         }
-
-        // Filter User Biasa: Hanya yang isPublished = true
-        // Admin bisa melihat draft (unpublished)
-        if (isAdmin) timeFiltered else timeFiltered.filter { it.isPublished }
     }
 
     Scaffold(
         containerColor = BgPremium,
         floatingActionButton = {
+            // Tombol Tambah HANYA muncul jika Admin
             if (isAdmin) {
                 FloatingActionButton(
                     onClick = { navController.navigate(Screen.AddSchedule.route) },
                     containerColor = EmeraldDeep,
-                    contentColor = White,
-                    shape = RoundedCornerShape(16.dp),
-                    elevation = FloatingActionButtonDefaults.elevation(8.dp)
-                ) {
-                    Icon(Icons.Default.Add, contentDescription = "Tambah")
-                }
+                    contentColor = White
+                ) { Icon(Icons.Default.Add, "Tambah") }
             }
         }
     ) { paddingValues ->
 
         Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(paddingValues)
+            modifier = Modifier.fillMaxSize().padding(paddingValues)
         ) {
             // --- HEADER ---
             Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 24.dp, vertical = 20.dp)
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 20.dp)
             ) {
-                // Dekorasi Icon Background
-                Icon(
-                    imageVector = Icons.Outlined.CalendarToday,
-                    contentDescription = null,
-                    tint = EmeraldDeep.copy(alpha = 0.05f),
-                    modifier = Modifier
-                        .align(Alignment.CenterEnd)
-                        .size(100.dp)
-                        .offset(x = 20.dp, y = 0.dp)
-                        .rotate(-15f)
-                )
+                // Dekorasi
+                Icon(Icons.Outlined.CalendarToday, null, tint = EmeraldDeep.copy(0.05f),
+                    modifier = Modifier.align(Alignment.CenterEnd).size(100.dp).rotate(-15f))
 
                 Column {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Default.CalendarToday, null, tint = TextColorSecondary, modifier = Modifier.size(14.dp))
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text(todayDate, fontSize = 12.sp, color = TextColorSecondary, fontWeight = FontWeight.Medium)
-                    }
-                    Spacer(modifier = Modifier.height(8.dp))
+                    // Indikator Role / Tanggal
                     Text(
-                        text = "Jadwal Kajian",
-                        fontSize = 28.sp,
+                        text = if (isAdmin) "Mode: ADMIN" else todayDate,
+                        fontSize = 11.sp,
                         fontWeight = FontWeight.Bold,
-                        color = EmeraldDeep,
-                        letterSpacing = (-0.5).sp
+                        color = if (isAdmin) RedError else EmeraldDeep,
+                        modifier = Modifier
+                            .background(if (isAdmin) RedError.copy(0.1f) else EmeraldDeep.copy(0.1f), RoundedCornerShape(4.dp))
+                            .padding(horizontal = 8.dp, vertical = 4.dp)
                     )
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    Text("Jadwal Kajian", fontSize = 28.sp, fontWeight = FontWeight.Bold, color = EmeraldDeep)
                     Text("Temukan majelis ilmu terdekat.", fontSize = 14.sp, color = TextColorSecondary)
                 }
             }
 
-            // --- FILTER TABS (FIXED) ---
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 24.dp),
-                horizontalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
-                // FIX: Menghapus pengecekan 'if (isAdmin)' agar tab 'Semua' muncul untuk semua user
-                CleanFilterButton("Semua", selectedFilter) { selectedFilter = it }
+            // --- TABS ---
+            Row(modifier = Modifier.padding(horizontal = 24.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                // Tombol 'Semua' HANYA muncul jika Admin
+                if (isAdmin) {
+                    CleanFilterButton("Semua", selectedFilter) { selectedFilter = it }
+                }
                 CleanFilterButton("Akan Datang", selectedFilter) { selectedFilter = it }
                 CleanFilterButton("Selesai", selectedFilter) { selectedFilter = it }
             }
 
             Spacer(modifier = Modifier.height(20.dp))
 
-            // --- LIST KONTEN ---
+            // --- LIST ---
             if (isLoading) {
-                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    CircularProgressIndicator(color = EmeraldDeep)
-                }
+                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator(color = EmeraldDeep) }
             } else if (filteredList.isEmpty()) {
                 Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.alpha(0.6f)) {
-                        Icon(Icons.Default.EventNote, null, tint = TextColorSecondary, modifier = Modifier.size(64.dp))
-                        Spacer(modifier = Modifier.height(16.dp))
-                        Text("Tidak ada jadwal yang sesuai.", color = TextColorSecondary, fontSize = 14.sp)
-
-                        // Pesan Debugging (Bisa dihapus nanti kalau sudah beres)
-                        if (scheduleList.isNotEmpty()) {
-                            Spacer(modifier = Modifier.height(8.dp))
-                            Text(
-                                "Debug: Data asli ada (${scheduleList.size}), tapi terfilter.\nCoba klik tab 'Semua' atau 'Selesai'.",
-                                color = Color.Gray,
-                                fontSize = 10.sp,
-                                lineHeight = 12.sp,
-                                textAlign = androidx.compose.ui.text.style.TextAlign.Center
-                            )
-                        }
-                    }
+                    Text("Tidak ada jadwal.", color = TextColorSecondary)
                 }
             } else {
                 LazyColumn(
-                    contentPadding = PaddingValues(start = 24.dp, end = 24.dp, bottom = 100.dp),
+                    contentPadding = PaddingValues(horizontal = 24.dp, vertical = 10.dp),
                     verticalArrangement = Arrangement.spacedBy(16.dp)
                 ) {
                     items(filteredList) { schedule ->
-                        // Safe check participant list
                         val isJoined = if (userId != null) schedule.participantsOnline.contains(userId) else false
 
                         CleanScheduleCard(
                             schedule = schedule,
-                            isAdmin = isAdmin,
+                            isAdmin = isAdmin, // <--- STATE INI SANGAT PENTING
                             isJoined = isJoined,
                             onClick = { navController.navigate("schedule_detail/${schedule.id}") },
+
+                            // Event Handlers
                             onDelete = { scheduleToDelete = schedule; showDeleteDialog = true },
                             onEdit = { navController.navigate("edit_schedule/${schedule.id}") },
-                            onPublish = {
-                                scheduleViewModel.updateSchedule(schedule.id, mapOf("isPublished" to true),
-                                    onSuccess = { Toast.makeText(context, "Diterbitkan!", Toast.LENGTH_SHORT).show() },
-                                    onError = { Toast.makeText(context, "Gagal: $it", Toast.LENGTH_SHORT).show() }
-                                )
-                            },
-                            onMarkAsFinished = {
-                                scheduleViewModel.updateSchedule(schedule.id, mapOf("isFinished" to true),
-                                    onSuccess = { Toast.makeText(context, "Selesai.", Toast.LENGTH_SHORT).show() },
-                                    onError = { Toast.makeText(context, "Gagal: $it", Toast.LENGTH_SHORT).show() }
-                                )
-                            },
+                            onPublish = { scheduleViewModel.updateSchedule(schedule.id, mapOf("isPublished" to true), {}, {}) },
+                            onMarkAsFinished = { scheduleViewModel.updateSchedule(schedule.id, mapOf("isFinished" to true), {}, {}) },
                             onJoinToggle = {
-                                if (userId == null) {
-                                    Toast.makeText(context, "Login dulu", Toast.LENGTH_SHORT).show()
-                                } else {
-                                    if (isJoined) {
-                                        scheduleViewModel.leaveEvent(schedule.id, userId, true, {}, { Toast.makeText(context, it, Toast.LENGTH_SHORT).show() })
-                                    } else {
-                                        scheduleViewModel.joinEvent(schedule.id, userId, true, { Toast.makeText(context, "Bergabung!", Toast.LENGTH_SHORT).show() }, { Toast.makeText(context, it, Toast.LENGTH_SHORT).show() })
-                                    }
-                                }
+                                if (userId == null) Toast.makeText(context, "Login dulu", Toast.LENGTH_SHORT).show()
+                                else if (isJoined) scheduleViewModel.leaveEvent(schedule.id, userId, true, {}, {})
+                                else scheduleViewModel.joinEvent(schedule.id, userId, true, {}, {})
                             },
                             onReminderClick = {
                                 val date = schedule.date?.toDate()
                                 if (date != null) {
-                                    try {
-                                        val intent = Intent(Intent.ACTION_INSERT).apply {
-                                            data = CalendarContract.Events.CONTENT_URI
-                                            putExtra(CalendarContract.Events.TITLE, schedule.title)
-                                            putExtra(CalendarContract.Events.EVENT_LOCATION, schedule.location)
-                                            putExtra(CalendarContract.EXTRA_EVENT_BEGIN_TIME, date.time)
-                                        }
-                                        context.startActivity(intent)
-                                    } catch (e: Exception) { Toast.makeText(context, "Tidak ada kalender", Toast.LENGTH_SHORT).show() }
+                                    val intent = Intent(Intent.ACTION_INSERT).apply {
+                                        data = CalendarContract.Events.CONTENT_URI
+                                        putExtra(CalendarContract.Events.TITLE, schedule.title)
+                                        putExtra(CalendarContract.EXTRA_EVENT_BEGIN_TIME, date.time)
+                                    }
+                                    try { context.startActivity(intent) } catch(e:Exception){}
                                 }
                             }
                         )
                     }
+                    // Spacer bawah agar list tidak tertutup FAB (jika admin)
+                    item { Spacer(modifier = Modifier.height(80.dp)) }
                 }
             }
         }
 
-        // --- DIALOG HAPUS ---
+        // --- DIALOG ---
         if (showDeleteDialog && scheduleToDelete != null) {
             AlertDialog(
                 onDismissRequest = { showDeleteDialog = false },
-                containerColor = White,
-                title = { Text("Hapus Jadwal?") },
-                text = { Text("Yakin ingin menghapus ${scheduleToDelete?.title}?") },
                 confirmButton = {
-                    Button(
-                        onClick = {
-                            scheduleToDelete?.let {
-                                scheduleViewModel.deleteSchedule(it.id,
-                                    onSuccess = { showDeleteDialog = false; scheduleToDelete = null },
-                                    onError = { Toast.makeText(context, "Gagal hapus", Toast.LENGTH_SHORT).show() }
-                                )
-                            }
-                        },
-                        colors = ButtonDefaults.buttonColors(containerColor = RedError)
-                    ) { Text("Hapus") }
+                    Button(onClick = { scheduleToDelete?.let { scheduleViewModel.deleteSchedule(it.id, {}, {}) }; showDeleteDialog = false },
+                        colors = ButtonDefaults.buttonColors(containerColor = RedError)) { Text("Hapus") }
                 },
-                dismissButton = {
-                    TextButton(onClick = { showDeleteDialog = false }) { Text("Batal") }
-                }
+                dismissButton = { TextButton(onClick = { showDeleteDialog = false }) { Text("Batal") } },
+                title = { Text("Hapus Data?") },
+                text = { Text("Yakin ingin menghapus?") }
             )
         }
     }
 }
 
-// --- KOMPONEN HELPER ---
-
-@Composable
-fun CleanFilterButton(text: String, selectedFilter: String, onClick: (String) -> Unit) {
-    val isSelected = text == selectedFilter
-    Surface(
-        onClick = { onClick(text) },
-        shape = RoundedCornerShape(12.dp),
-        color = if (isSelected) EmeraldDeep else Color.Transparent,
-        border = if (!isSelected) BorderStroke(1.dp, Color.LightGray) else null,
-    ) {
-        Box(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp), contentAlignment = Alignment.Center) {
-            Text(
-                text,
-                color = if (isSelected) White else TextColorSecondary,
-                fontSize = 13.sp,
-                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium
-            )
-        }
-    }
-}
+// --- CARD DENGAN LOGIKA PEMISAH ADMIN/USER YANG KETAT ---
 
 @Composable
 fun CleanScheduleCard(
@@ -329,85 +242,140 @@ fun CleanScheduleCard(
     onJoinToggle: () -> Unit,
     onReminderClick: () -> Unit
 ) {
-    // Handling null date untuk keamanan
     val dateObj = schedule.date?.toDate() ?: Date()
-    val dayStr = SimpleDateFormat("dd", Locale("id", "ID")).format(dateObj)
-    val monthStr = SimpleDateFormat("MMM", Locale("id", "ID")).format(dateObj).uppercase()
+    val dayStr = SimpleDateFormat("dd", Locale("id")).format(dateObj)
+    val monthStr = SimpleDateFormat("MMM", Locale("id")).format(dateObj).uppercase()
+    val timeStr = SimpleDateFormat("HH:mm", Locale("id")).format(dateObj)
     val totalAttendees = (schedule.participantsOnline?.size ?: 0) + (schedule.participantsOffline?.size ?: 0)
 
     val isFinished = schedule.isFinished
-    val isPublished = schedule.isPublished
+    val isDraft = !schedule.isPublished
 
-    // Hitung apakah sedang live
-    val currentTime = System.currentTimeMillis()
-    val eventTime = dateObj.time
-    val threeHoursMs = 3 * 60 * 60 * 1000
-    val isLive = isPublished && !isFinished && (eventTime <= currentTime && currentTime < (eventTime + threeHoursMs))
+    // Logic Live: Waktu acara s/d 2 jam setelahnya
+    val now = System.currentTimeMillis()
+    val isLive = !isFinished && (now >= dateObj.time && now <= dateObj.time + (7200000))
 
     Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable { onClick() }
-            .shadow(2.dp, RoundedCornerShape(16.dp)),
+        modifier = Modifier.fillMaxWidth().clickable { onClick() }.shadow(2.dp, RoundedCornerShape(16.dp)),
         shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(containerColor = White),
-        border = if (isLive) BorderStroke(1.dp, Color.Red) else null
+        border = if (isLive) BorderStroke(1.dp, RedError) else null
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
+            // BAGIAN ATAS (Tanggal & Info) - TAMPIL UNTUK SEMUA
             Row(verticalAlignment = Alignment.Top) {
-                // TANGGAL
                 Column(
                     horizontalAlignment = Alignment.CenterHorizontally,
                     modifier = Modifier
-                        .background(if(isLive) Color.Red.copy(0.1f) else EmeraldDeep.copy(0.1f), RoundedCornerShape(12.dp))
+                        .background(if (isLive) RedError.copy(0.1f) else Color(0xFFF5F5F5), RoundedCornerShape(12.dp))
                         .padding(10.dp)
                 ) {
-                    Text(dayStr, fontSize = 20.sp, fontWeight = FontWeight.Bold, color = if(isLive) Color.Red else EmeraldDeep)
-                    Text(monthStr, fontSize = 12.sp, fontWeight = FontWeight.Medium, color = if(isLive) Color.Red else EmeraldDeep)
+                    Text(dayStr, fontSize = 20.sp, fontWeight = FontWeight.Bold, color = if(isLive) RedError else EmeraldDeep)
+                    Text(monthStr, fontSize = 12.sp, fontWeight = FontWeight.Medium, color = if(isLive) RedError else TextColorSecondary)
                 }
-
                 Spacer(modifier = Modifier.width(16.dp))
-
-                // KONTEN UTAMA
                 Column(modifier = Modifier.weight(1f)) {
-                    if (isLive) {
-                        Text("SEDANG BERLANGSUNG", fontSize = 10.sp, color = Color.Red, fontWeight = FontWeight.Bold)
-                    } else if (isFinished) {
-                        Text("SELESAI", fontSize = 10.sp, color = Color.Gray, fontWeight = FontWeight.Bold)
-                    } else {
-                        Text(schedule.category.uppercase(), fontSize = 10.sp, color = EmeraldDeep, fontWeight = FontWeight.Bold)
-                    }
+                    if (isLive) Text("SEDANG BERLANGSUNG", fontSize = 10.sp, color = RedError, fontWeight = FontWeight.Bold)
+                    else if (isDraft && isAdmin) Text("DRAFT (Belum Terbit)", fontSize = 10.sp, color = Color.Gray, fontWeight = FontWeight.Bold)
 
-                    Text(schedule.title, fontWeight = FontWeight.Bold, fontSize = 16.sp, color = TextColorPrimary, maxLines = 2)
-                    Text("Ust. ${schedule.speaker}", fontSize = 14.sp, color = TextColorSecondary)
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(schedule.title, fontWeight = FontWeight.Bold, fontSize = 16.sp, lineHeight = 20.sp)
+                    Text("$timeStr WIB • Ust. ${schedule.speaker}", fontSize = 14.sp, color = TextColorSecondary)
                 }
             }
 
-            Spacer(modifier = Modifier.height(12.dp))
-            HorizontalDivider(color = Color(0xFFF0F0F0))
+            Spacer(modifier = Modifier.height(16.dp))
+            HorizontalDivider(thickness = 0.5.dp, color = Color.LightGray.copy(0.5f))
             Spacer(modifier = Modifier.height(12.dp))
 
-            // FOOTER BUTTONS
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                if (isAdmin) {
+            // --- BAGIAN BAWAH (AKSI) - INI PEMISAHNYA ---
+
+            if (isAdmin) {
+                // ==================
+                // TAMPILAN KHUSUS ADMIN
+                // ==================
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.End, // Tombol Admin rata kanan
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    TextButton(onClick = onEdit) { Text("Edit") }
+                    Spacer(modifier = Modifier.width(8.dp))
+
+                    if (isDraft) {
+                        Button(onClick = onPublish, colors = ButtonDefaults.buttonColors(containerColor = EmeraldDeep), modifier = Modifier.height(36.dp)) { Text("Publish") }
+                    } else if (!isFinished) {
+                        Button(onClick = onMarkAsFinished, colors = ButtonDefaults.buttonColors(containerColor = Color.Gray), modifier = Modifier.height(36.dp)) { Text("Selesai") }
+                    }
+
+                    IconButton(onClick = onDelete) { Icon(Icons.Default.Delete, null, tint = RedError) }
+                }
+
+            } else {
+                // ==================
+                // TAMPILAN KHUSUS USER
+                // ==================
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    // Info Peserta
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Default.People, null, tint = TextColorSecondary, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("$totalAttendees", fontSize = 12.sp, color = TextColorSecondary)
+                    }
+
+                    // Tombol User (Reminder & Join)
                     Row {
-                        TextButton(onClick = onEdit) { Text("Edit") }
-                        TextButton(onClick = onDelete) { Text("Hapus", color = RedError) }
-                        if (!isPublished) Button(onClick = onPublish, modifier = Modifier.height(35.dp)) { Text("Publish") }
-                        else if (!isFinished) Button(onClick = onMarkAsFinished, modifier = Modifier.height(35.dp), colors = ButtonDefaults.buttonColors(containerColor = Color.Gray)) { Text("Selesai") }
-                    }
-                } else {
-                    Text("$totalAttendees hadir", fontSize = 12.sp, color = TextColorSecondary)
-                    Button(
-                        onClick = onJoinToggle,
-                        enabled = !isFinished,
-                        modifier = Modifier.height(35.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = if(isJoined) Color(0xFFE0F2F1) else EmeraldDeep, contentColor = if(isJoined) EmeraldDeep else White)
-                    ) {
-                        Text(if(isJoined) "Terdaftar" else "Hadir")
+                        // Logic Waktu Lewat (Asumsi durasi 2 jam seperti Logic Live)
+                        val isTimePassed = now > (dateObj.time + 7200000)
+                        val finalIsFinished = isFinished || isTimePassed
+
+                        // Reminder hanya muncul jika belum selesai
+                        if (!finalIsFinished) {
+                            IconButton(onClick = onReminderClick) { Icon(Icons.Outlined.CalendarToday, null, tint = EmeraldDeep) }
+                            Spacer(modifier = Modifier.width(4.dp))
+                        }
+
+                        Button(
+                            onClick = onJoinToggle,
+                            enabled = !finalIsFinished,
+                            shape = RoundedCornerShape(8.dp),
+                            modifier = Modifier.height(36.dp),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = if (finalIsFinished) Color.Gray else if (isJoined) Color(0xFFE0F2F1) else EmeraldDeep,
+                                contentColor = if (finalIsFinished) White else if (isJoined) EmeraldDeep else White,
+                                disabledContainerColor = Color.Gray,
+                                disabledContentColor = White
+                            )
+                        ) {
+                            if (finalIsFinished) {
+                                Text("Selesai")
+                            } else {
+                                Text(if (isJoined) "Terdaftar" else "Gabung")
+                            }
+                        }
                     }
                 }
             }
+        }
+    }
+}
+
+// Helper Filter Button
+@Composable
+fun CleanFilterButton(text: String, selected: String, onClick: (String) -> Unit) {
+    val isSel = text == selected
+    Surface(
+        onClick = { onClick(text) },
+        shape = RoundedCornerShape(12.dp),
+        color = if (isSel) EmeraldDeep else Color.Transparent,
+        border = if (!isSel) BorderStroke(1.dp, Color(0xFFE0E0E0)) else null
+    ) {
+        Box(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
+            Text(text, color = if (isSel) White else TextColorSecondary, fontSize = 13.sp)
         }
     }
 }

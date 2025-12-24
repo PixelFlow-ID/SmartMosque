@@ -76,7 +76,8 @@ private val GoldAccent = Color(0xFFFFD700)
 fun HomeScreen(
     navController: NavController,
     authViewModel: AuthViewModel,
-    homeViewModel: HomeViewModel
+    homeViewModel: HomeViewModel,
+    financeViewModel: com.example.smartmosque.viewmodel.FinanceViewModel
 ) {
     val currentUser by authViewModel.currentUser.collectAsState()
     val userName = currentUser?.displayName?.split(" ")?.firstOrNull() ?: "Jamaah"
@@ -184,9 +185,16 @@ fun HomeScreen(
                 }
                 // -----------------------------------------------------------
 
-                // 2. MENU INFAQ
+                // 2. FINANCE SUMMARY
+                FinanceSummaryCard(financeViewModel) { 
+                    navController.navigate(Screen.Finance.route) 
+                }
+
+                Spacer(modifier = Modifier.height(24.dp))
+
+                // 3. MENU INFAQ
                 Text("Layanan Infaq", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = TextBlack)
-                Spacer(modifier = Modifier.height(16.dp))
+                Spacer(modifier = Modifier.height(10.dp))
 
                 PremiumDonationGrid(
                     onItemClick = { category ->
@@ -364,6 +372,18 @@ fun OngoingLiveCard(schedule: Schedule, onClick: () -> Unit) {
                         color = TextColorSecondary,
                         maxLines = 1,
                         overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                    )
+                }
+
+                // Info Peserta (Realtime)
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.Groups, null, tint = EmeraldDeep, modifier = Modifier.size(16.dp))
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text(
+                        text = "${(schedule.participantsOnline?.size ?: 0) + (schedule.participantsOffline?.size ?: 0)} Jamaah",
+                        fontSize = 12.sp,
+                        color = EmeraldDeep,
+                        fontWeight = FontWeight.Bold
                     )
                 }
 
@@ -646,6 +666,106 @@ fun InfaqBankCard(bank: PaymentMethod) {
         }
     }
 }
+
+@Composable
+fun FinanceSummaryCard(
+    financeViewModel: FinanceViewModel,
+    onClick: () -> Unit
+) {
+    // Collect Data Realtime
+    val balance by financeViewModel.currentBalance.collectAsState()
+    val income by financeViewModel.totalIncome.collectAsState()
+    val expense by financeViewModel.totalExpense.collectAsState()
+
+    val formatRp = NumberFormat.getCurrencyInstance(Locale("id", "ID"))
+    formatRp.maximumFractionDigits = 0
+
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 8.dp)
+            .shadow(6.dp, RoundedCornerShape(20.dp), spotColor = EmeraldDeep.copy(0.2f)),
+        shape = RoundedCornerShape(20.dp),
+        colors = CardDefaults.cardColors(containerColor = White)
+    ) {
+        Column(modifier = Modifier.padding(20.dp)) {
+            // Header: Judul dan Logo
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(
+                        modifier = Modifier
+                            .size(32.dp)
+                            .background(EmeraldLight.copy(0.2f), CircleShape),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(Icons.Outlined.AccountBalanceWallet, null, tint = EmeraldDeep, modifier = Modifier.size(18.dp))
+                    }
+                    Spacer(modifier = Modifier.width(10.dp))
+                    Text("Kas Masjid", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = TextColorPrimary)
+                }
+                
+                // CTA Button (Small & Elegant)
+                Surface(
+                    onClick = onClick,
+                    shape = RoundedCornerShape(50),
+                    color = EmeraldDeep.copy(0.1f)
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
+                    ) {
+                        Text("Detail", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = EmeraldDeep)
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Icon(Icons.Default.ArrowForward, null, tint = EmeraldDeep, modifier = Modifier.size(10.dp))
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // Main Balance
+            Text(
+                text = formatRp.format(balance),
+                fontSize = 26.sp,
+                fontWeight = FontWeight.ExtraBold,
+                color = TextBlack
+            )
+            Text("Saldo saat ini", fontSize = 12.sp, color = TextColorSecondary)
+
+            Spacer(modifier = Modifier.height(16.dp))
+            HorizontalDivider(color = GrayInputBackground)
+            Spacer(modifier = Modifier.height(12.dp))
+
+            // Summary Income / Expense (Small)
+            Row(modifier = Modifier.fillMaxWidth()) {
+                // Income
+                Row(modifier = Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.ArrowDownward, null, tint = Color(0xFF4CAF50), modifier = Modifier.size(16.dp))
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Column {
+                        Text("Pemasukan", fontSize = 10.sp, color = TextColorSecondary)
+                        Text(formatRp.format(income), fontSize = 12.sp, fontWeight = FontWeight.Bold, color = TextBlack)
+                    }
+                }
+                
+                // Expense
+                Row(modifier = Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.ArrowUpward, null, tint = Color(0xFFF44336), modifier = Modifier.size(16.dp))
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Column {
+                        Text("Pengeluaran", fontSize = 10.sp, color = TextColorSecondary)
+                        Text(formatRp.format(expense), fontSize = 12.sp, fontWeight = FontWeight.Bold, color = TextBlack)
+                    }
+                }
+            }
+        }
+    }
+}
+
 
 @Composable
 fun PremiumDonationGrid(onItemClick: (InfaqCategoryHome) -> Unit) {

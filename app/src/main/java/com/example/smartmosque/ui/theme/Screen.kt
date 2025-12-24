@@ -26,6 +26,9 @@ sealed class Screen(val route: String) {
 
     // Route dengan Parameter (Detail Wakaf)
     object WaqfDetail : Screen("waqf_detail/{projectId}")
+    
+    // --- Laporan Kas ---
+    object Finance : Screen("finance")
 
     object Notification : Screen("notification")
 

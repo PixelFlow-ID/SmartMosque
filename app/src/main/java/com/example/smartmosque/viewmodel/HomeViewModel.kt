@@ -67,17 +67,19 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
     /**
      * Fetch schedule statistics untuk bulan ini
      */
+    /**
+     * Fetch schedule statistics untuk bulan ini (REALTIME)
+     */
     private fun fetchScheduleStats() {
         viewModelScope.launch {
-            scheduleRepository.getMonthlyStats()
-                .onSuccess { (eventCount, participantCount) ->
-                    _eventsThisMonth.value = eventCount
-                    _totalParticipants.value = participantCount
-                }
-                .onFailure { exception ->
-                    // Handle error - set to 0
+            scheduleRepository.getMonthlyStatsFlow()
+                .catch { exception ->
                     _eventsThisMonth.value = 0
                     _totalParticipants.value = 0
+                }
+                .collect { (eventCount, participantCount) ->
+                    _eventsThisMonth.value = eventCount
+                    _totalParticipants.value = participantCount
                 }
         }
     }

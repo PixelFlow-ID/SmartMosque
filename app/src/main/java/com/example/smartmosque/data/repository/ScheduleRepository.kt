@@ -49,14 +49,9 @@ class ScheduleRepository {
      */
     fun getActiveSchedulesFlow(): Flow<List<Schedule>> = callbackFlow {
         val listener = scheduleCollection
-            // 1. Menggunakan 'isPublished' (Sesuai database Anda)
-            .whereEqualTo("isPublished", true)
-
-            // 2. Sorting berdasarkan tanggal (Sesuai Index Anda: isPublished + date)
+            .whereEqualTo("isFinished", false)
             .orderBy("date", Query.Direction.ASCENDING)
 
-            // Catatan: Filter .whereEqualTo("isFinished", false) dihapus dari query
-            // agar tidak perlu membuat Index baru. Kita filter manual di bawah.
 
             .addSnapshotListener { snapshot, error ->
                 if (error != null) {
@@ -67,8 +62,6 @@ class ScheduleRepository {
                 val schedules = snapshot?.documents?.mapNotNull { doc ->
                     try {
                         val item = doc.toObject(Schedule::class.java)?.copy(id = doc.id)
-
-                        // 3. Filter Manual: Hanya ambil data yang isFinished == false
                         if (item != null && item.isFinished == false) {
                             item
                         } else {
@@ -177,50 +170,55 @@ class ScheduleRepository {
     }
 
     /**
-     * Get schedule statistics for current month
+     * Get schedule statistics for current month (REALTIME FLOW)
      */
-    suspend fun getMonthlyStats(): Result<Pair<Int, Int>> {
-        return try {
-            val calendar = Calendar.getInstance()
-            calendar.set(Calendar.DAY_OF_MONTH, 1)
-            calendar.set(Calendar.HOUR_OF_DAY, 0)
-            calendar.set(Calendar.MINUTE, 0)
-            calendar.set(Calendar.SECOND, 0)
-            val startOfMonth = Timestamp(calendar.time)
+    fun getMonthlyStatsFlow(): Flow<Pair<Int, Int>> = callbackFlow {
+        val calendar = Calendar.getInstance()
+        calendar.set(Calendar.DAY_OF_MONTH, 1)
+        calendar.set(Calendar.HOUR_OF_DAY, 0)
+        calendar.set(Calendar.MINUTE, 0)
+        calendar.set(Calendar.SECOND, 0)
+        val startOfMonth = Timestamp(calendar.time)
 
-            calendar.add(Calendar.MONTH, 1)
-            val endOfMonth = Timestamp(calendar.time)
+        calendar.add(Calendar.MONTH, 1)
+        val endOfMonth = Timestamp(calendar.time)
 
-            // Note: Query ini mungkin perlu Index 'date' + 'isFinished' jika error
-            val snapshot = scheduleCollection
-                .whereGreaterThanOrEqualTo("date", startOfMonth)
-                .whereLessThan("date", endOfMonth)
-                .whereEqualTo("isFinished", true)
-                .get()
-                .await()
+        val listener = scheduleCollection
+            .whereGreaterThanOrEqualTo("date", startOfMonth)
+            .whereLessThan("date", endOfMonth)
+            // .whereEqualTo("isFinished", true) // Bisa dihapus jika ingin menghitung yang belum selesai juga, tapi biasanya statistik itu untuk yang sudah selesai/terlaksana.
+            // Namun user minta "kegiatan" dan "kehadiran", mungkin termasuk yang sedang berjalan?
+            // Mari kita asumsikan SEMUA kegiatan bulan ini (selesai atau tidak).
+            // Tapi biasanya logic awal filternya "isFinished = true". Kita pertahankan agar konsisten dengan logic "Laporan".
+             .whereEqualTo("isFinished", true)
+            .addSnapshotListener { snapshot, error ->
+                if (error != null) {
+                    close(error)
+                    return@addSnapshotListener
+                }
 
-            val eventCount = snapshot.size()
-            var totalParticipants = 0
+                val eventCount = snapshot?.size() ?: 0
+                var totalParticipants = 0
 
-            snapshot.documents.forEach { doc ->
-                val onlineList = doc.get("participantsOnline") as? List<*>
-                val offlineList = doc.get("participantsOffline") as? List<*>
-                totalParticipants += (onlineList?.size ?: 0) + (offlineList?.size ?: 0)
+                snapshot?.documents?.forEach { doc ->
+                    val onlineList = doc.get("participantsOnline") as? List<*>
+                    val offlineList = doc.get("participantsOffline") as? List<*>
+                    totalParticipants += (onlineList?.size ?: 0) + (offlineList?.size ?: 0)
+                }
+
+                trySend(Pair(eventCount, totalParticipants))
             }
 
-            Result.success(Pair(eventCount, totalParticipants))
-        } catch (e: Exception) {
-            Result.failure(e)
-        }
+        awaitClose { listener.remove() }
     }
 
     /**
      * Listen for ongoing events (sedang berlangsung)
+     * FIX: Check Date is Today!
      */
     fun listenForOngoingEvents(): Flow<Schedule?> = callbackFlow {
         val listener = scheduleCollection
-            .whereEqualTo("isPublished", true) // FIX: Changed from isActive to isPublished
-            // .whereEqualTo("isFinished", false) // Removed to avoid index error
+            .whereEqualTo("isPublished", true)
             .addSnapshotListener { snapshot, error ->
                 if (error != null) {
                     close(error)
@@ -231,29 +229,26 @@ class ScheduleRepository {
                 val ongoingEvent = snapshot?.documents?.mapNotNull { doc ->
                     try {
                         val s = doc.toObject(Schedule::class.java)?.copy(id = doc.id)
-                        // Manual check for finished status
                         if (s != null && s.isFinished == false) s else null
                     } catch (e: Exception) {
                         null
                     }
                 }?.firstOrNull { schedule ->
                     schedule.date?.toDate()?.let { eventDate ->
-                        val calendar = Calendar.getInstance()
-                        calendar.time = eventDate
-                        val eventHour = calendar.get(Calendar.HOUR_OF_DAY)
-                        val eventMinute = calendar.get(Calendar.MINUTE)
-
-                        val nowCalendar = Calendar.getInstance()
-                        nowCalendar.time = now
-                        val currentHour = nowCalendar.get(Calendar.HOUR_OF_DAY)
-                        val currentMinute = nowCalendar.get(Calendar.MINUTE)
-
-                        // Event berlangsung dalam rentang 2 jam
-                        val eventStartMinutes = eventHour * 60 + eventMinute
-                        val currentMinutes = currentHour * 60 + currentMinute
-                        val diff = currentMinutes - eventStartMinutes
-
-                        diff in 0..120 // 0-120 menit (2 jam)
+                        // 1. Cek Apakah Hari Ini?
+                        val isToday = android.text.format.DateUtils.isToday(eventDate.time)
+                        
+                        if (isToday) {
+                            // 2. Cek Waktu (Mulai s/d 2 Jam setelahnya)
+                            // Menggunakan timestamp comparison agar lebih akurat
+                            val startTime = eventDate.time
+                            val endTime = startTime + (2 * 60 * 60 * 1000) // +2 Jam
+                            val nowTime = now.time
+                            
+                            nowTime >= startTime && nowTime <= endTime
+                        } else {
+                            false
+                        }
                     } ?: false
                 }
 

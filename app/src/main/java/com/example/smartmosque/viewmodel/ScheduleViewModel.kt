@@ -44,7 +44,7 @@ class ScheduleViewModel : ViewModel() {
         viewModelScope.launch {
             _isLoading.value = true
             // Repository sudah menangani filter 'isPublished' dan 'isFinished'
-            scheduleRepository.getActiveSchedulesFlow()
+            scheduleRepository.getAllSchedulesFlow()
                 .catch { exception ->
                     _errorMessage.value = exception.message
                     _isLoading.value = false
