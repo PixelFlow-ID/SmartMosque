@@ -14,6 +14,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
+import androidx.compose.material.icons.outlined.AccountBalanceWallet
 import androidx.compose.material.icons.outlined.Notifications
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -37,6 +38,7 @@ import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
 import coil.compose.AsyncImage
 import com.example.smartmosque.viewmodel.HomeViewModel
+import com.example.smartmosque.viewmodel.FinanceViewModel
 
 // --- IMPORTS KHUSUS UNTUK KOMPRESI ---
 import com.example.smartmosque.utils.ImageUtils

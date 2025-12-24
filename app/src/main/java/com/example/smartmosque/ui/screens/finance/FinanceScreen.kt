@@ -196,15 +196,22 @@ fun FinanceHeader(onBack: () -> Unit) {
             .padding(horizontal = 24.dp, vertical = 20.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        // Tombol Kembali
-        IconButton(
+        // Tombol Kembali (Fixed: Bulat Sempurna)
+        Surface(
             onClick = onBack,
-            modifier = Modifier
-                .size(40.dp)
-                .background(White, CircleShape)
-                .shadow(2.dp, CircleShape)
+            shape = CircleShape,
+            color = White,
+            shadowElevation = 4.dp,
+            modifier = Modifier.size(40.dp)
         ) {
-            Icon(Icons.Default.ArrowBack, contentDescription = "Kembali", tint = EmeraldDeep)
+            Box(contentAlignment = Alignment.Center) {
+                Icon(
+                    imageVector = Icons.Default.ArrowBack, 
+                    contentDescription = "Kembali", 
+                    tint = EmeraldDeep,
+                    modifier = Modifier.size(20.dp)
+                )
+            }
         }
 
         Spacer(modifier = Modifier.width(16.dp))

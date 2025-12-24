@@ -21,6 +21,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -256,6 +257,40 @@ fun AboutMosqueScreen(
                                     )
                                 }
                             }
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(32.dp))
+
+                        // TRANSPARANSI (Navigasi Laporan Kas)
+                        PremiumSectionTitle("Transparansi")
+                        Card(
+                            onClick = { navController.navigate("finance") }, // Hardcoded route string or Screen.Finance.route if accessible
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .shadow(6.dp, RoundedCornerShape(16.dp), spotColor = EmeraldDeep.copy(0.1f)),
+                            shape = RoundedCornerShape(16.dp),
+                            colors = CardDefaults.cardColors(containerColor = White)
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(20.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(48.dp)
+                                        .background(EmeraldDeep.copy(0.1f), CircleShape),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(Icons.Filled.SquareFoot, null, tint = EmeraldDeep) // Placeholder Icon, idealnya Wallet
+                                }
+                                Spacer(modifier = Modifier.width(16.dp))
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text("Laporan Keuangan Masjid", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = TextColorPrimary)
+                                    Text("Klik untuk melihat detail pergerakan kas", fontSize = 12.sp, color = TextColorSecondary)
+                                }
+                                Icon(Icons.AutoMirrored.Filled.ArrowBack, null, modifier = Modifier.rotate(180f), tint = TextColorSecondary)
+                            }
                         }
 
                         Spacer(modifier = Modifier.height(100.dp))
@@ -282,7 +317,7 @@ fun AboutMosqueScreen(
             }
         }
     }
-}
+
 
 // --- KOMPONEN UI PREMIUM ---
 
