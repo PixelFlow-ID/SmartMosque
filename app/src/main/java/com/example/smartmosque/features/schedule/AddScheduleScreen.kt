@@ -104,9 +104,8 @@ fun AddScheduleScreen(navController: NavController) {
             "participantsOnline" to emptyList<String>(),
             "participantsOffline" to emptyList<String>(),
             "createdAt" to Timestamp.now(),
-
-            // --- FIELD PENTING: STATUS PUBLIKASI ---
-            "isPublished" to isPublished
+            "isPublished" to isPublished,
+            "isFinished" to false
         )
 
         firestore.collection("schedules")
