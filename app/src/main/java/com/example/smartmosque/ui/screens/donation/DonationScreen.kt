@@ -79,8 +79,9 @@ fun DonationScreen(
     var selectedInfaqCategory by remember { mutableStateOf<InfaqCategoryHome?>(null) }
     var amountToPay by remember { mutableStateOf(0L) }
 
-    // Logika Admin
-    val isAdmin = currentUser?.email == "ramdanidoni244@gmail.com"
+    // Logika Admin (Konsisten dengan screen lain)
+    val userRole by authViewModel.userRole.collectAsState()
+    val isAdmin = userRole == "admin" || currentUser?.email == "ramdanidoni244@gmail.com"
 
     Scaffold(
         containerColor = BgPremium,
@@ -106,6 +107,7 @@ fun DonationScreen(
             ) {
                 // HEADER BARU DENGAN GRID INFAK
                 PremiumDonationHeaderWithGrid(
+                    isAdmin = isAdmin,
                     onItemClick = { category ->
                         selectedInfaqCategory = category
                         showInfaqSheet = true
@@ -186,7 +188,7 @@ data class InfaqCategoryHome(
 )
 
 @Composable
-fun PremiumDonationHeaderWithGrid(onItemClick: (InfaqCategoryHome) -> Unit) {
+fun PremiumDonationHeaderWithGrid(isAdmin: Boolean, onItemClick: (InfaqCategoryHome) -> Unit) {
     Column(modifier = Modifier.padding(bottom = 24.dp).background(White, RoundedCornerShape(bottomStart = 32.dp, bottomEnd = 32.dp)).shadow(12.dp, RoundedCornerShape(bottomStart = 32.dp, bottomEnd = 32.dp), spotColor = Color.Black.copy(0.05f))) {
         // Bagian Atas Header
         Box(

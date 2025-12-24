@@ -59,7 +59,8 @@ fun ScheduleScreen(
 
     // LOGIKA PENENTU ADMIN
     // Pastikan di database Firestore collection 'users', field 'role' isinya benar-benar "admin"
-    val isAdmin = userRole == "admin"
+    // LOGIKA PENENTU ADMIN (Email Hardcoded + Firestore Role)
+    val isAdmin = userRole == "admin" || currentUser?.email == "ramdanidoni244@gmail.com"
 
     val scheduleList by scheduleViewModel.schedules.collectAsState()
     val isLoading by scheduleViewModel.isLoading.collectAsState()
@@ -144,8 +145,10 @@ fun ScheduleScreen(
                     )
                     Spacer(modifier = Modifier.height(8.dp))
 
-                    Text("Jadwal Kajian", fontSize = 28.sp, fontWeight = FontWeight.Bold, color = EmeraldDeep)
-                    Text("Temukan majelis ilmu terdekat.", fontSize = 14.sp, color = TextColorSecondary)
+                        Column {
+                            Text("Jadwal Kajian", fontSize = 28.sp, fontWeight = FontWeight.Bold, color = EmeraldDeep)
+                            Text("Temukan majelis ilmu terdekat.", fontSize = 14.sp, color = TextColorSecondary)
+                        }
                 }
             }
 

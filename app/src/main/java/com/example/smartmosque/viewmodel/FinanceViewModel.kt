@@ -101,4 +101,28 @@ class FinanceViewModel : ViewModel() {
                 .onFailure { onError(it.message ?: "Gagal") }
         }
     }
+
+    fun updateTransaction(
+        id: String,
+        title: String,
+        description: String,
+        amount: Long,
+        type: String,
+        category: String,
+        onSuccess: () -> Unit,
+        onError: (String) -> Unit
+    ) {
+        viewModelScope.launch {
+            val updates = mapOf(
+                "title" to title,
+                "description" to description,
+                "amount" to amount,
+                "type" to type,
+                "category" to category
+            )
+            repository.updateTransaction(id, updates)
+                .onSuccess { onSuccess() }
+                .onFailure { onError(it.message ?: "Gagal") }
+        }
+    }
 }

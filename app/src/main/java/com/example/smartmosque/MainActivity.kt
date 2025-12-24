@@ -165,6 +165,16 @@ fun AppNavigation() {
             composable(Screen.Finance.route) {
                 com.example.smartmosque.ui.screens.finance.FinanceScreen(navController, authViewModel, financeViewModel)
             }
+            composable(Screen.AddFinance.route) {
+                com.example.smartmosque.ui.screens.finance.AddEditFinanceScreen(navController, financeViewModel, authViewModel)
+            }
+            composable(
+                route = Screen.EditFinance.route,
+                arguments = listOf(navArgument("transactionId") { type = NavType.StringType })
+            ) { backStackEntry ->
+                val transactionId = backStackEntry.arguments?.getString("transactionId")
+                com.example.smartmosque.ui.screens.finance.AddEditFinanceScreen(navController, financeViewModel, authViewModel, transactionId)
+            }
 
             // PROFILE
             composable(Screen.Notification.route) { com.example.smartmosque.ui.screens.notification.NotificationScreen(navController, authViewModel) }

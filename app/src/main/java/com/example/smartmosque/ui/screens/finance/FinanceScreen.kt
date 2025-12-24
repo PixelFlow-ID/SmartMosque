@@ -54,7 +54,7 @@ fun FinanceScreen(
     // Auth Check
     val userRole by authViewModel.userRole.collectAsState()
     val currentUser by authViewModel.currentUser.collectAsState()
-    val isAdmin = userRole == "admin"
+    val isAdmin = userRole == "admin" || currentUser?.email == "ramdanidoni244@gmail.com"
 
     // Data State
     val transactions by financeViewModel.transactions.collectAsState()
@@ -64,7 +64,6 @@ fun FinanceScreen(
     val isLoading by financeViewModel.isLoading.collectAsState()
 
     // UI Logic
-    var showAddSheet by remember { mutableStateOf(false) }
     var selectedTab by remember { mutableStateOf("Semua") } // Filter List: Semua, Masuk, Keluar
 
     // ANIMATION TRIGGER (Selalu animasi saat masuk)
@@ -78,9 +77,10 @@ fun FinanceScreen(
         floatingActionButton = {
             if (isAdmin) {
                 FloatingActionButton(
-                    onClick = { showAddSheet = true },
+                    onClick = { navController.navigate(Screen.AddFinance.route) },
                     containerColor = EmeraldDeep,
-                    contentColor = White
+                    contentColor = White,
+                    shape = CircleShape
                 ) {
                     Icon(Icons.Default.Add, "Tambah Transaksi")
                 }
@@ -93,7 +93,10 @@ fun FinanceScreen(
                 .padding(paddingValues)
         ) {
             // --- HEADER ---
-            FinanceHeader(onBack = { navController.popBackStack() })
+            FinanceHeader(
+                isAdmin = isAdmin,
+                onBack = { navController.popBackStack() }
+            )
 
             Spacer(modifier = Modifier.height(16.dp))
 
@@ -148,55 +151,41 @@ fun FinanceScreen(
                     verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
                     items(filteredList) { item ->
-                        TransactionItem(transaction = item, isAdmin = isAdmin) {
-                            if (isAdmin) {
+                        TransactionItem(
+                            transaction = item, 
+                            isAdmin = isAdmin,
+                            onEdit = {
+                                navController.navigate("edit_finance/${item.id}")
+                            },
+                            onDelete = {
                                 // Delete Logic Simpel
-                                financeViewModel.deleteTransaction(item.id, {}, {})
+                                financeViewModel.deleteTransaction(item.id, {
+                                    Toast.makeText(context, "Data Berhasil Dihapus", Toast.LENGTH_SHORT).show()
+                                }, {
+                                    Toast.makeText(context, "Gagal Menghapus: $it", Toast.LENGTH_SHORT).show()
+                                })
                             }
-                        }
+                        )
                     }
                 }
             }
         }
     }
 
-    // --- BOTTOM SHEET ADD ---
-    if (showAddSheet) {
-        AddTransactionSheet(
-            onDismiss = { showAddSheet = false },
-            onSave = { title, amount, type, desc ->
-                financeViewModel.addTransaction(
-                    title = title,
-                    description = desc,
-                    amount = amount,
-                    type = type, // INCOME / EXPENSE
-                    category = "Umum",
-                    date = Timestamp.now(),
-                    createdBy = currentUser?.uid ?: "",
-                    onSuccess = {
-                        showAddSheet = false
-                        Toast.makeText(context, "Data Tersimpan", Toast.LENGTH_SHORT).show()
-                    },
-                    onError = {
-                        Toast.makeText(context, "Gagal: $it", Toast.LENGTH_SHORT).show()
-                    }
-                )
-            }
-        )
-    }
+    // --- BOTTOM SHEET REMOVED IN FAVOR OF SCREENS ---
 }
 
 // ---------------- UI COMPONENTS -----------------
 
 @Composable
-fun FinanceHeader(onBack: () -> Unit) {
+fun FinanceHeader(isAdmin: Boolean, onBack: () -> Unit) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = 24.dp, vertical = 20.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        // Tombol Kembali (Fixed: Bulat Sempurna)
+        // Tombol Kembali
         Surface(
             onClick = onBack,
             shape = CircleShape,
@@ -216,7 +205,7 @@ fun FinanceHeader(onBack: () -> Unit) {
 
         Spacer(modifier = Modifier.width(16.dp))
 
-        Column {
+        Column(modifier = Modifier.weight(1f)) {
             Text("Laporan Kas", fontSize = 24.sp, fontWeight = FontWeight.Bold, color = EmeraldDeep)
             Text("Transparansi Keuangan", fontSize = 12.sp, color = TextColorSecondary)
         }
@@ -345,7 +334,12 @@ fun StatBarColumn(
 }
 
 @Composable
-fun TransactionItem(transaction: CashTransaction, isAdmin: Boolean, onDelete: () -> Unit) {
+fun TransactionItem(
+    transaction: CashTransaction, 
+    isAdmin: Boolean, 
+    onEdit: () -> Unit,
+    onDelete: () -> Unit
+) {
     val isIncome = transaction.type == "INCOME"
     val color = if (isIncome) Color(0xFF4CAF50) else Color(0xFFF44336)
     val icon = if (isIncome) Icons.Outlined.TrendingUp else Icons.Outlined.TrendingDown
@@ -391,13 +385,21 @@ fun TransactionItem(transaction: CashTransaction, isAdmin: Boolean, onDelete: ()
                 color = color
             )
             if (isAdmin) {
-                Spacer(modifier = Modifier.height(4.dp))
-                Icon(
-                    Icons.Default.Delete, 
-                    "Hapus", 
-                    tint = Color.Gray, 
-                    modifier = Modifier.size(16.dp).clickable { onDelete() } 
-                )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        Icons.Default.Edit, 
+                        "Edit", 
+                        tint = EmeraldDeep, 
+                        modifier = Modifier.size(20.dp).clickable { onEdit() } 
+                    )
+                    Spacer(modifier = Modifier.width(12.dp))
+                    Icon(
+                        Icons.Default.Delete, 
+                        "Hapus", 
+                        tint = Color.Gray, 
+                        modifier = Modifier.size(20.dp).clickable { onDelete() } 
+                    )
+                }
             }
         }
     }
@@ -422,84 +424,3 @@ fun FilterChipSmart(text: String, startSelected: Boolean, onClick: () -> Unit) {
 }
 
 
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-fun AddTransactionSheet(onDismiss: () -> Unit, onSave: (String, Long, String, String) -> Unit) {
-    var title by remember { mutableStateOf("") }
-    var amountStr by remember { mutableStateOf("") }
-    var type by remember { mutableStateOf("INCOME") } // INCOME atau EXPENSE
-    var desc by remember { mutableStateOf("") }
-
-    ModalBottomSheet(onDismissRequest = onDismiss, containerColor = White) {
-        Column(modifier = Modifier.padding(24.dp).padding(bottom = 20.dp)) {
-            Text("Tambah Transaksi", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = EmeraldDeep)
-            Spacer(modifier = Modifier.height(24.dp))
-
-            // Type Selector
-            Row(modifier = Modifier.fillMaxWidth().background(Color(0xFFF5F5F5), RoundedCornerShape(12.dp)).padding(4.dp)) {
-                val types = listOf("Pemasukan" to "INCOME", "Pengeluaran" to "EXPENSE")
-                types.forEach { (label, value) ->
-                    val isSel = type == value
-                    Box(
-                        modifier = Modifier
-                            .weight(1f)
-                            .clip(RoundedCornerShape(8.dp))
-                            .background(if(isSel) White else Color.Transparent)
-                            .clickable { type = value }
-                            .padding(vertical = 12.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(
-                            label,
-                            fontWeight = FontWeight.Bold,
-                            color = if(isSel) (if(value=="INCOME") Color(0xFF4CAF50) else Color(0xFFF44336)) else TextColorSecondary
-                        )
-                    }
-                }
-            }
-            
-            Spacer(modifier = Modifier.height(16.dp))
-
-            OutlinedTextField(
-                value = title, onValueChange = { title = it },
-                label = { Text("Judul (Cth: Infaq Jumat)") },
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(12.dp)
-            )
-            
-            Spacer(modifier = Modifier.height(12.dp))
-            
-            OutlinedTextField(
-                value = amountStr, onValueChange = { if(it.all { c -> c.isDigit() }) amountStr = it },
-                label = { Text("Nominal (Rp)") },
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(12.dp)
-            )
-
-            Spacer(modifier = Modifier.height(12.dp))
-            
-             OutlinedTextField(
-                value = desc, onValueChange = { desc = it },
-                label = { Text("Catatan (Opsional)") },
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(12.dp)
-            )
-
-            Spacer(modifier = Modifier.height(24.dp))
-            
-            Button(
-                onClick = {
-                    if (title.isNotEmpty() && amountStr.isNotEmpty()) {
-                        onSave(title, amountStr.toLong(), type, desc)
-                    }
-                },
-                modifier = Modifier.fillMaxWidth().height(50.dp),
-                shape = RoundedCornerShape(12.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = EmeraldDeep)
-            ) {
-                Text("Simpan Data", color = White, fontWeight = FontWeight.Bold)
-            }
-        }
-    }
-}

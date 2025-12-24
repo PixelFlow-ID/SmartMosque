@@ -29,6 +29,8 @@ sealed class Screen(val route: String) {
     
     // --- Laporan Kas ---
     object Finance : Screen("finance")
+    object AddFinance : Screen("add_finance")
+    object EditFinance : Screen("edit_finance/{transactionId}")
 
     object Notification : Screen("notification")
 
