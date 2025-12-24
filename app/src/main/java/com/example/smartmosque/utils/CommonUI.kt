@@ -19,8 +19,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
-import com.example.smartmosque.features.auth.AuthViewModel
-import com.example.smartmosque.model.Schedule
+import com.example.smartmosque.viewmodel.AuthViewModel
+import com.example.smartmosque.data.model.Schedule
 import com.example.smartmosque.ui.theme.Screen
 import com.google.firebase.Firebase
 import com.google.firebase.firestore.FieldValue

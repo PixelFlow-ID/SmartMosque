@@ -48,7 +48,7 @@
         android:resource="@android:color/holo_green_dark" />
 
     <receiver
-        android:name=".features.schedule.ReminderBroadcastReceiver"
+        android:name=".ui.screens.schedule.ReminderBroadcastReceiver"
         android:enabled="true"
         android:exported="false" />
 
