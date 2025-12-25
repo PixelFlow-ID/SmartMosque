@@ -1,4 +1,4 @@
-package com.example.smartmosque.ui.components
+package com.example.smartmosque.features.home
 
 import android.widget.Toast
 import androidx.compose.foundation.background

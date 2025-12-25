@@ -2,9 +2,7 @@ package com.example.smartmosque
 
 import android.app.Application
 import com.cloudinary.android.MediaManager
-import dagger.hilt.android.HiltAndroidApp
 
-@HiltAndroidApp
 class SmartMosqueApp : Application() {
     override fun onCreate() {
         super.onCreate()

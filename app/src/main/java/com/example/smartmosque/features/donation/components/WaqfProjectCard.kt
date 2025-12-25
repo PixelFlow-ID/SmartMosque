@@ -1,4 +1,4 @@
-package com.example.smartmosque.ui.components
+package com.example.smartmosque.features.donation.components
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable

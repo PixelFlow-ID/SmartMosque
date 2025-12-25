@@ -13,6 +13,7 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Scaffold
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -22,21 +23,34 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
-import androidx.compose.runtime.getValue
-import com.example.smartmosque.viewmodel.AuthViewModel
-import com.example.smartmosque.ui.screens.donation.donationGraph
-import com.example.smartmosque.ui.screens.home.HomeScreen
-import com.example.smartmosque.viewmodel.HomeViewModel
+
+// --- IMPORT VIEWMODEL ---
+import com.example.smartmosque.features.auth.AuthViewModel
+import com.example.smartmosque.features.home.HomeViewModel
+
+// --- IMPORT SCREENS (Dari package 'features') ---
+// Pastikan tidak ada yang merah di bagian ini.
+// Jika merah, hapus barisnya lalu tekan Alt+Enter untuk import ulang.
+import com.example.smartmosque.features.auth.OnboardingScreen
+import com.example.smartmosque.features.auth.LoginScreen
+import com.example.smartmosque.features.auth.RegisterScreen
+import com.example.smartmosque.features.home.HomeScreen
+import com.example.smartmosque.features.schedule.ScheduleScreen
+import com.example.smartmosque.features.schedule.ScheduleDetailScreen
+import com.example.smartmosque.features.schedule.AddScheduleScreen
+import com.example.smartmosque.features.schedule.EditScheduleScreen
+import com.example.smartmosque.features.notification.NotificationScreen
+import com.example.smartmosque.features.profile.ProfileDetailScreen
+import com.example.smartmosque.features.profile.EditProfileScreen
+import com.example.smartmosque.features.profile.AboutMosqueScreen
+import com.example.smartmosque.features.donation.donationGraph
+
+// --- COMPONENT LAIN ---
 import com.example.smartmosque.ui.components.BottomNavBar
-import com.example.smartmosque.ui.screens.schedule.AddScheduleScreen
-import com.example.smartmosque.ui.screens.schedule.EditScheduleScreen
 import com.example.smartmosque.ui.theme.*
 import com.google.firebase.analytics.FirebaseAnalytics
 import com.google.firebase.messaging.FirebaseMessaging
 
-import dagger.hilt.android.AndroidEntryPoint
-
-@AndroidEntryPoint
 class MainActivity : ComponentActivity() {
     private lateinit var firebaseAnalytics: FirebaseAnalytics
 
@@ -44,6 +58,7 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         firebaseAnalytics = FirebaseAnalytics.getInstance(this)
 
+        // Izin Notifikasi (Android 13+)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             val requestPermissionLauncher = registerForActivityResult(
                 ActivityResultContracts.RequestPermission()
@@ -55,9 +70,14 @@ class MainActivity : ComponentActivity() {
 
         enableEdgeToEdge()
 
-        FirebaseMessaging.getInstance().subscribeToTopic("general")
-        FirebaseMessaging.getInstance().subscribeToTopic("waqf")
-        FirebaseMessaging.getInstance().subscribeToTopic("events")
+        // Subscribe ke Topik FCM (Bungkus try-catch agar aman)
+        try {
+            FirebaseMessaging.getInstance().subscribeToTopic("general")
+            FirebaseMessaging.getInstance().subscribeToTopic("waqf")
+            FirebaseMessaging.getInstance().subscribeToTopic("events")
+        } catch (e: Exception) {
+            Log.e("MainActivity", "FCM Subscribe error: ${e.message}")
+        }
 
         setContent {
             SmartMosqueTheme {
@@ -70,15 +90,17 @@ class MainActivity : ComponentActivity() {
 @Composable
 fun AppNavigation() {
     val navController = rememberNavController()
-    val context = LocalContext.current
+    // val context = LocalContext.current // (Unused variable removed)
 
+    // --- INISIALISASI VIEWMODEL (TANPA HILT) ---
+    // PENTING: Pastikan AuthViewModel & HomeViewModel constructor-nya KOSONG
+    // atau Repository-nya diinisialisasi manual di dalam ViewModel tersebut.
     val authViewModel: AuthViewModel = viewModel()
     val homeViewModel: HomeViewModel = viewModel()
-    // TAMBAHAN: Shared ViewModel untuk Finance
-    val financeViewModel: com.example.smartmosque.viewmodel.FinanceViewModel = viewModel()
 
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = navBackStackEntry?.destination?.route
+
     val showBottomBar = currentRoute in listOf(
         Screen.Home.route,
         Screen.Schedule.route,
@@ -100,15 +122,17 @@ fun AppNavigation() {
             startDestination = Screen.Onboarding.route,
             modifier = Modifier.padding(paddingValues)
         ) {
-            // AUTH
-            composable(Screen.Onboarding.route) { com.example.smartmosque.ui.screens.auth.OnboardingScreen(navController, authViewModel) }
-            // Login & Register
+            // --- AUTHENTICATION ---
+            composable(Screen.Onboarding.route) {
+                OnboardingScreen(navController, authViewModel)
+            }
+
             composable(
                 route = Screen.Login.route,
                 enterTransition = { slideIntoContainer(AnimatedContentTransitionScope.SlideDirection.Left, tween(700)) },
                 exitTransition = { slideOutOfContainer(AnimatedContentTransitionScope.SlideDirection.Left, tween(700)) }
             ) {
-                com.example.smartmosque.ui.screens.auth.LoginScreen(
+                LoginScreen(
                     navController = navController,
                     authViewModel = authViewModel,
                     onLoginClick = { e, p -> authViewModel.login(e, p) },
@@ -116,71 +140,66 @@ fun AppNavigation() {
                     onGoogleSignInClick = { t -> authViewModel.firebaseSignInWithGoogle(t) }
                 )
             }
-            composable(Screen.Register.route) { com.example.smartmosque.ui.screens.auth.RegisterScreen(navController, authViewModel) }
 
-            // MAIN FEATURES
+            composable(Screen.Register.route) {
+                RegisterScreen(navController, authViewModel)
+            }
+
+            // --- MAIN FEATURES ---
             composable(Screen.Home.route) {
-                // PANGGIL HOMESCREEN DARI FILE BARU
-                HomeScreen(navController, authViewModel, homeViewModel, financeViewModel)
+                HomeScreen(navController, authViewModel, homeViewModel)
             }
 
             composable(Screen.Schedule.route) {
-                com.example.smartmosque.ui.screens.schedule.ScheduleScreen(navController, authViewModel)
+                ScheduleScreen(navController, authViewModel)
             }
 
-            // SCHEDULE
+            // --- SCHEDULE DETAILS & EDIT ---
             composable(
                 route = Screen.ScheduleDetail.route,
                 arguments = listOf(navArgument("scheduleId") { type = NavType.StringType })
             ) { backStackEntry ->
-                com.example.smartmosque.ui.screens.schedule.ScheduleDetailScreen(
+                ScheduleDetailScreen(
                     navController,
                     backStackEntry.arguments?.getString("scheduleId"),
                     authViewModel
                 )
             }
-            composable(
-                route= Screen.AddSchedule.route
-            ){
+
+            composable(route = Screen.AddSchedule.route){
                 AddScheduleScreen(navController = navController)
             }
-            donationGraph(navController, authViewModel)
-
 
             composable(
                 route = "edit_schedule/{scheduleId}",
                 arguments = listOf(navArgument("scheduleId") { type = NavType.StringType })
             ) { backStackEntry ->
-                // Ambil ID dari argumen
                 val scheduleId = backStackEntry.arguments?.getString("scheduleId") ?: ""
-
-                // Panggil Screen Edit
                 EditScheduleScreen(
                     navController = navController,
                     scheduleId = scheduleId
                 )
             }
 
-            // FINANCE / LAPORAN KAS
-            composable(Screen.Finance.route) {
-                com.example.smartmosque.ui.screens.finance.FinanceScreen(navController, authViewModel, financeViewModel)
-            }
-            composable(Screen.AddFinance.route) {
-                com.example.smartmosque.ui.screens.finance.AddEditFinanceScreen(navController, financeViewModel, authViewModel)
-            }
-            composable(
-                route = Screen.EditFinance.route,
-                arguments = listOf(navArgument("transactionId") { type = NavType.StringType })
-            ) { backStackEntry ->
-                val transactionId = backStackEntry.arguments?.getString("transactionId")
-                com.example.smartmosque.ui.screens.finance.AddEditFinanceScreen(navController, financeViewModel, authViewModel, transactionId)
+            // --- DONATION (Nested Graph) ---
+            donationGraph(navController, authViewModel)
+
+            // --- PROFILE & NOTIFICATIONS ---
+            composable(Screen.Notification.route) {
+                NotificationScreen(navController, authViewModel)
             }
 
-            // PROFILE
-            composable(Screen.Notification.route) { com.example.smartmosque.ui.screens.notification.NotificationScreen(navController, authViewModel) }
-            composable(Screen.ProfileDetail.route) { com.example.smartmosque.ui.screens.profile.ProfileDetailScreen(navController, authViewModel) }
-            composable(Screen.EditProfile.route) { com.example.smartmosque.ui.screens.profile.EditProfileScreen(navController, authViewModel) }
-            composable(Screen.AboutMosque.route) { com.example.smartmosque.ui.screens.profile.AboutMosqueScreen(navController, authViewModel) }
+            composable(Screen.ProfileDetail.route) {
+                ProfileDetailScreen(navController, authViewModel)
+            }
+
+            composable(Screen.EditProfile.route) {
+                EditProfileScreen(navController, authViewModel)
+            }
+
+            composable(Screen.AboutMosque.route) {
+                AboutMosqueScreen(navController, authViewModel)
+            }
         }
     }
 }
