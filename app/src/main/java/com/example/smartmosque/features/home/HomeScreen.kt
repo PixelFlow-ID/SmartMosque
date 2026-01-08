@@ -1,19 +1,16 @@
 package com.example.smartmosque.features.home
 
-import android.net.Uri
-import android.widget.Toast
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
+
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
+import androidx.compose.material.icons.outlined.AccountBalanceWallet
 import androidx.compose.material.icons.outlined.Notifications
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -24,39 +21,27 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
+import com.example.smartmosque.features.finance.FinanceViewModel
 import coil.compose.AsyncImage
 
-// --- IMPORTS KHUSUS UNTUK KOMPRESI ---
+
 import com.example.smartmosque.utils.ImageUtils
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import java.io.File
-// -------------------------------------
 
 import com.example.smartmosque.features.auth.AuthViewModel
-import com.example.smartmosque.features.donation.PaymentMethod
 import com.example.smartmosque.model.Schedule // Import Model Schedule
 import com.example.smartmosque.ui.theme.*
 import com.example.smartmosque.utils.UpcommingEventBox
-import com.google.firebase.Firebase
-import com.google.firebase.Timestamp
-import com.google.firebase.firestore.FirebaseFirestore
-import com.google.firebase.firestore.firestore
-import com.google.firebase.storage.FirebaseStorage
 import java.text.NumberFormat
 import java.util.Locale
-import java.util.UUID
 
 // DATA MODEL
 data class InfaqCategoryHome(
@@ -74,7 +59,8 @@ private val GoldAccent = Color(0xFFFFD700)
 fun HomeScreen(
     navController: NavController,
     authViewModel: AuthViewModel,
-    homeViewModel: HomeViewModel
+    homeViewModel: HomeViewModel,
+    financeViewModel: com.example.smartmosque.features.finance.FinanceViewModel
 ) {
     val currentUser by authViewModel.currentUser.collectAsState()
     val userName = currentUser?.displayName?.split(" ")?.firstOrNull() ?: "Jamaah"
@@ -181,6 +167,13 @@ fun HomeScreen(
                     Spacer(modifier = Modifier.height(30.dp))
                 }
                 // ----------------------------------------------------------
+
+                // 2. FINANCE SUMMARY
+                FinanceSummaryCard(financeViewModel) {
+                    navController.navigate(Screen.Finance.route)
+                }
+
+                Spacer(modifier = Modifier.height(24.dp))
 
                 // 3. WAKAF & EVENT
                 com.example.smartmosque.features.donation.components.MiniWaqfProjectNew(navController)
@@ -339,6 +332,105 @@ fun OngoingLiveCard(schedule: Schedule, onClick: () -> Unit) {
                         Text("Gabung", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold)
                         Spacer(modifier = Modifier.width(4.dp))
                         Icon(Icons.Default.ArrowForward, null, tint = Color.White, modifier = Modifier.size(10.dp))
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun FinanceSummaryCard(
+    financeViewModel: FinanceViewModel,
+    onClick: () -> Unit
+) {
+    // Collect Data Realtime
+    val balance by financeViewModel.currentBalance.collectAsState()
+    val income by financeViewModel.totalIncome.collectAsState()
+    val expense by financeViewModel.totalExpense.collectAsState()
+
+    val formatRp = NumberFormat.getCurrencyInstance(Locale("id", "ID"))
+    formatRp.maximumFractionDigits = 0
+
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 8.dp)
+            .shadow(6.dp, RoundedCornerShape(20.dp), spotColor = EmeraldDeep.copy(0.2f)),
+        shape = RoundedCornerShape(20.dp),
+        colors = CardDefaults.cardColors(containerColor = White)
+    ) {
+        Column(modifier = Modifier.padding(20.dp)) {
+            // Header: Judul dan Logo
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(
+                        modifier = Modifier
+                            .size(32.dp)
+                            .background(EmeraldLight.copy(0.2f), CircleShape),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(Icons.Outlined.AccountBalanceWallet, null, tint = EmeraldDeep, modifier = Modifier.size(18.dp))
+                    }
+                    Spacer(modifier = Modifier.width(10.dp))
+                    Text("Kas Masjid", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = TextColorPrimary)
+                }
+
+                // CTA Button (Small & Elegant)
+                Surface(
+                    onClick = onClick,
+                    shape = RoundedCornerShape(50),
+                    color = EmeraldDeep.copy(0.1f)
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
+                    ) {
+                        Text("Detail", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = EmeraldDeep)
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Icon(Icons.Default.ArrowForward, null, tint = EmeraldDeep, modifier = Modifier.size(10.dp))
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // Main Balance
+            Text(
+                text = formatRp.format(balance),
+                fontSize = 26.sp,
+                fontWeight = FontWeight.ExtraBold,
+                color = TextBlack
+            )
+            Text("Saldo saat ini", fontSize = 12.sp, color = TextColorSecondary)
+
+            Spacer(modifier = Modifier.height(16.dp))
+            HorizontalDivider(color = GrayInputBackground)
+            Spacer(modifier = Modifier.height(12.dp))
+
+            // Summary Income / Expense (Small)
+            Row(modifier = Modifier.fillMaxWidth()) {
+                // Income
+                Row(modifier = Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.ArrowDownward, null, tint = Color(0xFF4CAF50), modifier = Modifier.size(16.dp))
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Column {
+                        Text("Pemasukan", fontSize = 10.sp, color = TextColorSecondary)
+                        Text(formatRp.format(income), fontSize = 12.sp, fontWeight = FontWeight.Bold, color = TextBlack)
+                    }
+                }
+
+                // Expense
+                Row(modifier = Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.ArrowUpward, null, tint = Color(0xFFF44336), modifier = Modifier.size(16.dp))
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Column {
+                        Text("Pengeluaran", fontSize = 10.sp, color = TextColorSecondary)
+                        Text(formatRp.format(expense), fontSize = 12.sp, fontWeight = FontWeight.Bold, color = TextBlack)
                     }
                 }
             }

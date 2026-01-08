@@ -15,7 +15,6 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
@@ -97,6 +96,7 @@ fun AppNavigation() {
     // atau Repository-nya diinisialisasi manual di dalam ViewModel tersebut.
     val authViewModel: AuthViewModel = viewModel()
     val homeViewModel: HomeViewModel = viewModel()
+    val financeViewModel: com.example.smartmosque.features.finance.FinanceViewModel = viewModel()
 
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = navBackStackEntry?.destination?.route
@@ -126,7 +126,6 @@ fun AppNavigation() {
             composable(Screen.Onboarding.route) {
                 OnboardingScreen(navController, authViewModel)
             }
-
             composable(
                 route = Screen.Login.route,
                 enterTransition = { slideIntoContainer(AnimatedContentTransitionScope.SlideDirection.Left, tween(700)) },
@@ -147,7 +146,22 @@ fun AppNavigation() {
 
             // --- MAIN FEATURES ---
             composable(Screen.Home.route) {
-                HomeScreen(navController, authViewModel, homeViewModel)
+                HomeScreen(navController, authViewModel, homeViewModel, financeViewModel)
+            }
+
+            // FINANCE / LAPORAN KAS
+            composable(Screen.Finance.route) {
+                com.example.smartmosque.features.finance.FinanceScreen(navController, authViewModel, financeViewModel)
+            }
+            composable(Screen.AddFinance.route) {
+                com.example.smartmosque.features.finance.AddEditFinanceScreen(navController, financeViewModel, authViewModel)
+            }
+            composable(
+                route = Screen.EditFinance.route,
+                arguments = listOf(navArgument("transactionId") { type = NavType.StringType })
+            ) { backStackEntry ->
+                val transactionId = backStackEntry.arguments?.getString("transactionId")
+                com.example.smartmosque.features.finance.AddEditFinanceScreen(navController, financeViewModel, authViewModel, transactionId)
             }
 
             composable(Screen.Schedule.route) {
