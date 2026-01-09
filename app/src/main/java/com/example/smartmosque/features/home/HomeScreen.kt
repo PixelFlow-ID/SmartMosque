@@ -28,14 +28,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
 import com.example.smartmosque.features.finance.FinanceViewModel
-import coil.compose.AsyncImage
-
-
-import com.example.smartmosque.utils.ImageUtils
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
-import java.io.File
-
 import com.example.smartmosque.features.auth.AuthViewModel
 import com.example.smartmosque.model.Schedule // Import Model Schedule
 import com.example.smartmosque.ui.theme.*
