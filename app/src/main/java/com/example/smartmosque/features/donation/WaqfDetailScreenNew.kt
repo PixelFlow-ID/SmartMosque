@@ -1,6 +1,6 @@
 package com.example.smartmosque.features.donation
 
-import android.content.Context
+
 import android.net.Uri
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -38,6 +38,7 @@ import com.cloudinary.android.MediaManager
 import com.cloudinary.android.callback.ErrorInfo
 import com.cloudinary.android.callback.UploadCallback
 import com.example.smartmosque.features.auth.AuthViewModel
+import com.example.smartmosque.model.PaymentMethod
 import com.example.smartmosque.model.WaqfProject
 import com.example.smartmosque.ui.theme.*
 import com.example.smartmosque.utils.ImageUtils
@@ -47,14 +48,6 @@ import kotlinx.coroutines.launch
 import java.text.NumberFormat
 import java.util.*
 
-// --- MODEL DATA LOKAL ---
-data class PaymentMethod(
-    val name: String = "",
-    val accountName: String = "",
-    val accountNumber: String = "",
-    val logoUrl: String = "",
-    val type: String = "" // "BANK" atau "QRIS"
-)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable

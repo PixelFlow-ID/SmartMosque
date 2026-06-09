@@ -1,7 +1,10 @@
 package com.example.smartmosque.model
 
+import androidx.annotation.Keep
 import com.google.firebase.Timestamp
 
+
+@Keep
 data class WaqfProject(
     // --- TAMBAHKAN BARIS INI (WAJIB) ---
     val id: String = "",

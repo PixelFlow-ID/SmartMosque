@@ -261,24 +261,6 @@ fun AboutMosqueScreen(
                     }
                 }
             }
-
-            // --- 4. CUSTOM BACK BUTTON (OVERLAY) ---
-            Box(
-                modifier = Modifier
-                    .padding(top = 40.dp, start = 20.dp) // Sesuaikan status bar
-            ) {
-                Surface(
-                    onClick = { navController.popBackStack() },
-                    shape = CircleShape,
-                    color = White.copy(alpha = 0.2f),
-                    contentColor = White,
-                    modifier = Modifier.size(44.dp)
-                ) {
-                    Box(contentAlignment = Alignment.Center) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Kembali")
-                    }
-                }
-            }
         }
     }
 }

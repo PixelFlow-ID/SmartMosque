@@ -1,9 +1,11 @@
 package com.example.smartmosque.model
 
+import androidx.annotation.Keep
 import com.google.firebase.Timestamp
 import com.google.firebase.firestore.IgnoreExtraProperties
 
-@IgnoreExtraProperties // <--- PENTING: Mencegah crash jika ada field asing
+@IgnoreExtraProperties
+@Keep
 data class Schedule(
     val id: String = "",
     val title: String = "",

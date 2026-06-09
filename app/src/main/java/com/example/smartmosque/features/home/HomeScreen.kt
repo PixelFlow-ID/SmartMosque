@@ -29,9 +29,9 @@ import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
 import com.example.smartmosque.features.finance.FinanceViewModel
 import com.example.smartmosque.features.auth.AuthViewModel
-import com.example.smartmosque.model.Schedule // Import Model Schedule
+import com.example.smartmosque.features.schedule.components.MiniCardSchedule
+import com.example.smartmosque.model.Schedule
 import com.example.smartmosque.ui.theme.*
-import com.example.smartmosque.utils.UpcommingEventBox
 import java.text.NumberFormat
 import java.util.Locale
 
@@ -58,17 +58,13 @@ fun HomeScreen(
     val userName = currentUser?.displayName?.split(" ")?.firstOrNull() ?: "Jamaah"
     val userInitial = userName.take(1).uppercase()
     val context = LocalContext.current
-
     // Notifikasi State
     val hasUnreadNotifications by homeViewModel.hasUnreadNotifications.collectAsState()
-
     // Ongoing Event State (BARU)
     val ongoingEvent by homeViewModel.ongoingEvent.collectAsState()
-
     // --- STATE UNTUK FLOW INFAQ ---
     var showInfaqSheet by remember { mutableStateOf(false) }
     var showPaymentDialog by remember { mutableStateOf(false) }
-
     var selectedInfaqCategory by remember { mutableStateOf<InfaqCategoryHome?>(null) }
     var amountToPay by remember { mutableStateOf(0L) }
 
@@ -171,7 +167,7 @@ fun HomeScreen(
                 com.example.smartmosque.features.donation.components.MiniWaqfProjectNew(navController)
 
                 Spacer(modifier = Modifier.height(24.dp))
-                UpcommingEventBox(navController, authViewModel)
+                MiniCardSchedule(navController, authViewModel)
                 Spacer(modifier = Modifier.height(100.dp))
             }
         }
@@ -303,7 +299,7 @@ fun OngoingLiveCard(schedule: Schedule, onClick: () -> Unit) {
                     Icon(Icons.Default.LocationOn, null, tint = TextColorSecondary, modifier = Modifier.size(14.dp))
                     Spacer(modifier = Modifier.width(4.dp))
                     Text(
-                        text = schedule.location, // Pastikan di model Schedule ada field 'location'
+                        text = schedule.location,
                         fontSize = 12.sp,
                         color = TextColorSecondary,
                         maxLines = 1,
@@ -313,7 +309,7 @@ fun OngoingLiveCard(schedule: Schedule, onClick: () -> Unit) {
 
                 // Tombol "Gabung" Kecil
                 Surface(
-                    color = EmeraldDeep, // Warna Hijau Tema
+                    color = EmeraldDeep,
                     shape = RoundedCornerShape(50),
                     modifier = Modifier.padding(start = 8.dp)
                 ) {

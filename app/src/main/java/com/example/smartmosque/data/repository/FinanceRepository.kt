@@ -20,21 +20,28 @@ class FinanceRepository {
         val listener = financeCollection
             .orderBy("date", Query.Direction.DESCENDING)
             .addSnapshotListener { snapshot, error ->
+
                 if (error != null) {
-                    close(error)
+                    // Jika ada error jaringan/firebase sesaat, biarkan saja
+                    // dan jangan matikan aliran (flow) datanya.
                     return@addSnapshotListener
                 }
 
-                val transactions = snapshot?.documents?.mapNotNull { doc ->
-                    try {
-                        doc.toObject(CashTransaction::class.java)?.copy(id = doc.id)
-                    } catch (e: Exception) {
-                        null
+                if (snapshot != null) {
+                    val transactions = snapshot.documents.mapNotNull { doc ->
+                        try {
+                            val data = doc.toObject(CashTransaction::class.java)
+                            data?.id = doc.id
+                            data
+                        } catch (e: Exception) {
+                            // Abaikan dokumen yang gagal di-parsing
+                            null
+                        }
                     }
-                } ?: emptyList()
-
-                trySend(transactions)
+                    trySend(transactions).isSuccess
+                }
             }
+
         awaitClose { listener.remove() }
     }
 

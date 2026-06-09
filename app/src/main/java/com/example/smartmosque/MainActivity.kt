@@ -89,18 +89,13 @@ class MainActivity : ComponentActivity() {
 @Composable
 fun AppNavigation() {
     val navController = rememberNavController()
-    // val context = LocalContext.current // (Unused variable removed)
-
     // --- INISIALISASI VIEWMODEL (TANPA HILT) ---
-    // PENTING: Pastikan AuthViewModel & HomeViewModel constructor-nya KOSONG
-    // atau Repository-nya diinisialisasi manual di dalam ViewModel tersebut.
+
     val authViewModel: AuthViewModel = viewModel()
     val homeViewModel: HomeViewModel = viewModel()
     val financeViewModel: com.example.smartmosque.features.finance.FinanceViewModel = viewModel()
-
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = navBackStackEntry?.destination?.route
-
     val showBottomBar = currentRoute in listOf(
         Screen.Home.route,
         Screen.Schedule.route,
@@ -122,6 +117,7 @@ fun AppNavigation() {
             startDestination = Screen.Onboarding.route,
             modifier = Modifier.padding(paddingValues)
         ) {
+
             // --- AUTHENTICATION ---
             composable(Screen.Onboarding.route) {
                 OnboardingScreen(navController, authViewModel)
@@ -164,6 +160,7 @@ fun AppNavigation() {
                 com.example.smartmosque.features.finance.AddEditFinanceScreen(navController, financeViewModel, authViewModel, transactionId)
             }
 
+            // --- SCHEDULE
             composable(Screen.Schedule.route) {
                 ScheduleScreen(navController, authViewModel)
             }

@@ -78,9 +78,6 @@ fun MiniWaqfProjectNew(navController: NavController) {
                 fontWeight = FontWeight.Bold,
                 color = TextColorPrimary
             )
-            TextButton(onClick = { navController.navigate(Screen.Donation.route) }) {
-                Text("Lihat Semua", color = GreenPrimary, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
-            }
         }
 
         Spacer(modifier = Modifier.height(12.dp))

@@ -6,6 +6,7 @@ sealed class Screen(val route: String) {
     object Login : Screen("login")
     object Register : Screen("register")
     object Welcome : Screen("welcome")
+    object Splash : Screen("splash_screen")
 
     // Fitur Utama
     object Home : Screen("home")

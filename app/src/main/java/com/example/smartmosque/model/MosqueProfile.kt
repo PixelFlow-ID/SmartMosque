@@ -1,5 +1,8 @@
 package com.example.smartmosque.model
 
+import androidx.annotation.Keep
+
+@Keep
 data class MosqueProfile(
     val name: String = "",
     val location: String = "",

@@ -14,9 +14,9 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
-import androidx.compose.material.icons.outlined.NotificationsActive
 import androidx.compose.material.icons.outlined.CalendarToday
 import androidx.compose.material.icons.outlined.CheckCircle
+import androidx.compose.material.icons.outlined.NotificationsActive
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -31,14 +31,11 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavController
 import com.example.smartmosque.features.auth.AuthViewModel
 import com.example.smartmosque.model.Schedule
 import com.example.smartmosque.ui.theme.Screen
-import com.google.firebase.Firebase
-import com.google.firebase.firestore.FieldValue
-import com.google.firebase.firestore.Query
-import com.google.firebase.firestore.firestore
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -55,75 +52,34 @@ import com.example.smartmosque.ui.theme.RedError
 @Composable
 fun ScheduleScreen(
     navController: NavController,
-    authViewModel: AuthViewModel
+    authViewModel: AuthViewModel,
+    scheduleViewModel: ScheduleViewModel = viewModel() // Panggil ViewModel di sini
 ) {
     val context = LocalContext.current
     val userRole by authViewModel.userRole.collectAsState()
     val currentUser by authViewModel.currentUser.collectAsState()
     val userId = currentUser?.uid
 
-    // Cek status Admin
     val isAdmin = userRole?.trim()?.equals("admin", ignoreCase = true) == true
 
-    var scheduleList by remember { mutableStateOf<List<Schedule>>(emptyList()) }
-    var isLoading by remember { mutableStateOf(true) }
-    var selectedFilter by remember { mutableStateOf("Akan Datang") }
+    // Ambil Data dari ViewModel (Bukan direct Firebase lagi)
+    val scheduleList by scheduleViewModel.schedules.collectAsState()
+    val isLoading by scheduleViewModel.isLoading.collectAsState()
 
-    // Dialog Hapus
+    var selectedFilter by remember { mutableStateOf("Akan Datang") }
     var showDeleteDialog by remember { mutableStateOf(false) }
     var scheduleToDelete by remember { mutableStateOf<Schedule?>(null) }
 
-    val todayDate = remember {
-        SimpleDateFormat("EEEE, d MMMM yyyy", Locale("id", "ID")).format(Date())
-    }
+    val todayDate = remember { SimpleDateFormat("EEEE, d MMMM yyyy", Locale("id", "ID")).format(Date()) }
 
-    // --- FETCH DATA SCHEDULE ---
-    LaunchedEffect(Unit) {
-        Firebase.firestore.collection("schedules")
-            .orderBy("date", Query.Direction.ASCENDING)
-            .addSnapshotListener { snapshot, e ->
-                isLoading = false
-                if (snapshot != null) {
-                    val list = snapshot.documents.mapNotNull { doc ->
-                        try {
-                            @Suppress("UNCHECKED_CAST")
-                            val onlineList = (doc.get("participantsOnline") as? List<String>) ?: emptyList()
-                            @Suppress("UNCHECKED_CAST")
-                            val offlineList = (doc.get("participantsOffline") as? List<String>) ?: emptyList()
-
-                            Schedule(
-                                id = doc.id,
-                                title = doc.getString("title") ?: "",
-                                speaker = doc.getString("speaker") ?: "",
-                                time = doc.getString("time") ?: "",
-                                location = doc.getString("location") ?: "",
-                                category = doc.getString("category") ?: "Pengajian",
-                                date = doc.getTimestamp("date"),
-                                participantsOnline = onlineList,
-                                participantsOffline = offlineList,
-                                streamingUrl = doc.getString("streamingUrl") ?: "",
-                                isPublished = doc.getBoolean("isPublished") ?: true,
-                                isFinished = doc.getBoolean("isFinished") ?: false
-                            )
-                        } catch (err: Exception) { null }
-                    }
-                    scheduleList = list
-                }
-            }
-    }
-
-    // --- LOGIKA FILTER ---
+    // --- LOGIKA FILTER (Tetap dipertahankan di UI karena ini manipulasi state tampilan) ---
     val filteredList = remember(scheduleList, selectedFilter, isAdmin) {
         val threeHoursInMillis = 3 * 60 * 60 * 1000
         val cutoffTime = Date(System.currentTimeMillis() - threeHoursInMillis)
 
         val timeFiltered = when (selectedFilter) {
-            "Akan Datang" -> scheduleList.filter {
-                !it.isFinished && it.date?.toDate()?.after(cutoffTime) == true
-            }
-            "Selesai" -> scheduleList.filter {
-                it.isFinished || it.date?.toDate()?.before(cutoffTime) == true
-            }.sortedByDescending { it.date }
+            "Akan Datang" -> scheduleList.filter { !it.isFinished && it.date?.toDate()?.after(cutoffTime) == true }
+            "Selesai" -> scheduleList.filter { it.isFinished || it.date?.toDate()?.before(cutoffTime) == true }.sortedByDescending { it.date }
             else -> scheduleList
         }
         if (isAdmin) timeFiltered else timeFiltered.filter { it.isPublished }
@@ -131,7 +87,6 @@ fun ScheduleScreen(
 
     Scaffold(
         containerColor = BgPremium,
-        // --- IMPLEMENTASI FAB SAMA PERSIS DENGAN DONATION SCREEN ---
         floatingActionButton = {
             if (isAdmin) {
                 FloatingActionButton(
@@ -140,39 +95,20 @@ fun ScheduleScreen(
                     contentColor = White,
                     shape = RoundedCornerShape(16.dp),
                     elevation = FloatingActionButtonDefaults.elevation(8.dp)
-                    // Modifier padding dihapus agar posisi default Scaffold (seperti DonationScreen)
-                ) {
-                    Icon(Icons.Default.Add, contentDescription = "Tambah Jadwal")
-                }
+                ) { Icon(Icons.Default.Add, contentDescription = "Tambah Jadwal") }
             }
         }
     ) { paddingValues ->
-
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(paddingValues)
-        ) {
-
-            // KONTEN UTAMA
+        Box(modifier = Modifier.fillMaxSize().padding(paddingValues)) {
             Column(modifier = Modifier.fillMaxSize()) {
                 // Header
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 24.dp, vertical = 20.dp)
-                ) {
+                Box(modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 20.dp)) {
                     Icon(
                         imageVector = Icons.Outlined.CalendarToday,
                         contentDescription = null,
                         tint = EmeraldDeep.copy(alpha = 0.05f),
-                        modifier = Modifier
-                            .align(Alignment.CenterEnd)
-                            .size(100.dp)
-                            .offset(x = 20.dp, y = 0.dp)
-                            .rotate(-15f)
+                        modifier = Modifier.align(Alignment.CenterEnd).size(100.dp).offset(x = 20.dp, y = 0.dp).rotate(-15f)
                     )
-
                     Column {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Icon(Icons.Default.CalendarToday, null, tint = TextColorSecondary, modifier = Modifier.size(14.dp))
@@ -180,24 +116,13 @@ fun ScheduleScreen(
                             Text(todayDate, fontSize = 12.sp, color = TextColorSecondary, fontWeight = FontWeight.Medium)
                         }
                         Spacer(modifier = Modifier.height(8.dp))
-                        Text(
-                            text = "Jadwal Kajian",
-                            fontSize = 28.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = EmeraldDeep,
-                            letterSpacing = (-0.5).sp
-                        )
+                        Text("Jadwal Kajian", fontSize = 28.sp, fontWeight = FontWeight.Bold, color = EmeraldDeep, letterSpacing = (-0.5).sp)
                         Text("Temukan majelis ilmu terdekat.", fontSize = 14.sp, color = TextColorSecondary)
                     }
                 }
 
                 // Filter Tabs
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 24.dp),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
+                Row(modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     CleanFilterButton("Akan Datang", selectedFilter) { selectedFilter = it }
                     CleanFilterButton("Selesai", selectedFilter) { selectedFilter = it }
                     if (isAdmin) CleanFilterButton("Semua", selectedFilter) { selectedFilter = it }
@@ -207,9 +132,7 @@ fun ScheduleScreen(
 
                 // List Jadwal
                 if (isLoading) {
-                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        CircularProgressIndicator(color = EmeraldDeep)
-                    }
+                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator(color = EmeraldDeep) }
                 } else if (filteredList.isEmpty()) {
                     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                         Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.alpha(0.6f)) {
@@ -220,7 +143,6 @@ fun ScheduleScreen(
                     }
                 } else {
                     LazyColumn(
-                        // Bottom padding secukupnya agar item terakhir tidak tertutup FAB
                         contentPadding = PaddingValues(start = 24.dp, end = 24.dp, bottom = 100.dp),
                         verticalArrangement = Arrangement.spacedBy(16.dp)
                     ) {
@@ -235,26 +157,28 @@ fun ScheduleScreen(
                                 onDelete = { scheduleToDelete = schedule; showDeleteDialog = true },
                                 onEdit = { navController.navigate("edit_schedule/${schedule.id}") },
                                 onPublish = {
-                                    Firebase.firestore.collection("schedules").document(schedule.id)
-                                        .update("isPublished", true)
-                                        .addOnSuccessListener { Toast.makeText(context, "Jadwal Diterbitkan", Toast.LENGTH_SHORT).show() }
+                                    scheduleViewModel.publishSchedule(schedule.id) {
+                                        Toast.makeText(context, "Jadwal Diterbitkan", Toast.LENGTH_SHORT).show()
+                                    }
                                 },
                                 onMarkAsFinished = {
-                                    Firebase.firestore.collection("schedules").document(schedule.id)
-                                        .update("isFinished", true)
-                                        .addOnSuccessListener { Toast.makeText(context, "Ditandai Selesai", Toast.LENGTH_SHORT).show() }
+                                    scheduleViewModel.markAsFinished(schedule.id) {
+                                        Toast.makeText(context, "Ditandai Selesai", Toast.LENGTH_SHORT).show()
+                                    }
                                 },
                                 onJoinToggle = {
                                     if (userId == null) {
                                         Toast.makeText(context, "Silakan login dulu", Toast.LENGTH_SHORT).show()
                                     } else {
-                                        val docRef = Firebase.firestore.collection("schedules").document(schedule.id)
-                                        if (isJoined) {
-                                            docRef.update("participantsOnline", FieldValue.arrayRemove(userId))
-                                        } else {
-                                            docRef.update("participantsOnline", FieldValue.arrayUnion(userId))
-                                                .addOnSuccessListener { Toast.makeText(context, "Berhasil bergabung!", Toast.LENGTH_SHORT).show() }
-                                        }
+                                        scheduleViewModel.toggleJoin(
+                                            scheduleId = schedule.id,
+                                            userId = userId,
+                                            isJoined = isJoined,
+                                            onSuccess = { msg ->
+                                                Toast.makeText(context, msg, Toast.LENGTH_SHORT)
+                                                    .show()
+                                            }
+                                        )
                                     }
                                 },
                                 onReminderClick = {
@@ -278,7 +202,7 @@ fun ScheduleScreen(
                     }
                 }
             }
-        } // End Box
+        }
 
         // --- DIALOG HAPUS ---
         if (showDeleteDialog && scheduleToDelete != null) {
@@ -290,7 +214,11 @@ fun ScheduleScreen(
                 confirmButton = {
                     Button(
                         onClick = {
-                            scheduleToDelete?.let { Firebase.firestore.collection("schedules").document(it.id).delete() }
+                            scheduleToDelete?.let {
+                                scheduleViewModel.deleteSchedule(it.id) {
+                                    Toast.makeText(context, "Jadwal berhasil dihapus", Toast.LENGTH_SHORT).show()
+                                }
+                            }
                             showDeleteDialog = false; scheduleToDelete = null
                         },
                         colors = ButtonDefaults.buttonColors(containerColor = RedError)
@@ -307,9 +235,31 @@ fun ScheduleScreen(
 }
 
 // ==========================================
+// COMPONENT: CLEAN FILTER BUTTON
+// ==========================================
+@Composable
+fun CleanFilterButton(text: String, selectedFilter: String, onClick: (String) -> Unit) {
+    val isSelected = text == selectedFilter
+    Surface(
+        onClick = { onClick(text) },
+        shape = RoundedCornerShape(12.dp),
+        color = if (isSelected) EmeraldDeep else Color.Transparent,
+        border = if (!isSelected) BorderStroke(1.dp, Color.LightGray) else null,
+    ) {
+        Box(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp), contentAlignment = Alignment.Center) {
+            Text(
+                text,
+                color = if (isSelected) White else TextColorSecondary,
+                fontSize = 13.sp,
+                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium
+            )
+        }
+    }
+}
+
+// ==========================================
 // COMPONENT: CLEAN SCHEDULE CARD
 // ==========================================
-
 @Composable
 fun CleanScheduleCard(
     schedule: Schedule,
@@ -360,7 +310,6 @@ fun CleanScheduleCard(
         border = if (isLive) BorderStroke(1.dp, Color.Red.copy(alpha = 0.3f)) else null
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
-
             Row(verticalAlignment = Alignment.Top) {
                 val (dateColor, dateBgColor) = when {
                     isLive -> Pair(Color.Red, Color.Red.copy(0.05f))
@@ -472,26 +421,4 @@ fun CleanScheduleCard(
     }
 }
 
-// ==========================================
-// COMPONENT: CLEAN FILTER BUTTON
-// ==========================================
-
-@Composable
-fun CleanFilterButton(text: String, selectedFilter: String, onClick: (String) -> Unit) {
-    val isSelected = text == selectedFilter
-    Surface(
-        onClick = { onClick(text) },
-        shape = RoundedCornerShape(12.dp),
-        color = if (isSelected) EmeraldDeep else Color.Transparent,
-        border = if (!isSelected) BorderStroke(1.dp, Color.LightGray) else null,
-    ) {
-        Box(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp), contentAlignment = Alignment.Center) {
-            Text(
-                text,
-                color = if (isSelected) White else TextColorSecondary,
-                fontSize = 13.sp,
-                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium
-            )
-        }
-    }
-}
+// Sub-komponen (CleanScheduleCard & CleanFilterButton) tetap berada di bawah file ini tanpa perubahan logika UI.
