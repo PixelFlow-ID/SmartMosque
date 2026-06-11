@@ -1,6 +1,7 @@
 package com.example.smartmosque.features.home
 
 import android.app.Application
+import android.content.Context
 import androidx.lifecycle.AndroidViewModel
 import com.example.smartmosque.model.Schedule
 import com.example.smartmosque.utils.NotificationPrefs
@@ -18,6 +19,10 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
     private val _hasUnreadNotifications = MutableStateFlow(false)
     val hasUnreadNotifications: StateFlow<Boolean> = _hasUnreadNotifications
 
+    // TAMBAHAN: State untuk menampung tipe notifikasi terakhir (schedule, wakaf, system)
+    private val _lastNotificationType = MutableStateFlow("system")
+    val lastNotificationType: StateFlow<String> = _lastNotificationType
+
     private val _eventsThisMonth = MutableStateFlow(0)
     val eventsThisMonth: StateFlow<Int> = _eventsThisMonth
 
@@ -33,6 +38,11 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
     init {
         val context = getApplication<Application>().applicationContext
         lastCheckTime = NotificationPrefs.getLastCheckTime(context)
+
+        // Ambil data tipe notifikasi terakhir yang disimpan oleh SMFirebaseMessagingService
+        val sharedPreferences = context.getSharedPreferences("smart_mosque_prefs", Context.MODE_PRIVATE)
+        _lastNotificationType.value = sharedPreferences.getString("last_notification_type", "system") ?: "system"
+        _hasUnreadNotifications.value = sharedPreferences.getBoolean("has_new_notification", false)
 
         // Memanggil semua fungsi listener
         listenForNewNotifications()
@@ -51,6 +61,19 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
                 if (e != null) return@addSnapshotListener
                 if (snapshot != null && !snapshot.isEmpty) {
                     _hasUnreadNotifications.value = true
+
+                    // Ambil tipe data dari dokumen terbaru jika dikirim lewat Firestore database
+                    val latestDoc = snapshot.documents.firstOrNull()
+                    val type = latestDoc?.getString("type") ?: "system"
+                    _lastNotificationType.value = type
+
+                    // Selaraskan juga ke SharedPreferences lokal
+                    val context = getApplication<Application>().applicationContext
+                    val sharedPreferences = context.getSharedPreferences("smart_mosque_prefs", Context.MODE_PRIVATE)
+                    sharedPreferences.edit().apply {
+                        putBoolean("has_new_notification", true)
+                        putString("last_notification_type", type)
+                    }.apply()
                 }
             }
     }
@@ -60,7 +83,13 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
         val currentTime = System.currentTimeMillis()
         lastCheckTime = currentTime
         val context = getApplication<Application>().applicationContext
+
+        // Simpan waktu pengecekan terakhir
         NotificationPrefs.saveLastCheckTime(context)
+
+        // Reset status unread di SharedPreferences lokal agar sinkron dengan UI lonceng
+        val sharedPreferences = context.getSharedPreferences("smart_mosque_prefs", Context.MODE_PRIVATE)
+        sharedPreferences.edit().putBoolean("has_new_notification", false).apply()
     }
 
     // ==========================================================

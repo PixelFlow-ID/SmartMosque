@@ -1,4 +1,4 @@
-package com.example.smartmosque.data.repository
+package com.example.smartmosque.features.schedule.data
 
 import com.example.smartmosque.model.Schedule
 import com.google.firebase.firestore.FieldValue

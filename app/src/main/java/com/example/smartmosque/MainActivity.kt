@@ -22,6 +22,8 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
+import com.example.smartmosque.features.admin.presentation.finance.AddEditFinanceScreen
+import com.example.smartmosque.features.admin.presentation.finance.AdminFinanceViewModel
 
 // --- IMPORT VIEWMODEL ---
 import com.example.smartmosque.features.auth.AuthViewModel
@@ -36,8 +38,9 @@ import com.example.smartmosque.features.auth.RegisterScreen
 import com.example.smartmosque.features.home.HomeScreen
 import com.example.smartmosque.features.schedule.ScheduleScreen
 import com.example.smartmosque.features.schedule.ScheduleDetailScreen
-import com.example.smartmosque.features.schedule.AddScheduleScreen
-import com.example.smartmosque.features.schedule.EditScheduleScreen
+import com.example.smartmosque.features.admin.presentation.schedule.AddScheduleScreen
+import com.example.smartmosque.features.admin.presentation.schedule.AdminScheduleViewModel
+import com.example.smartmosque.features.admin.presentation.schedule.EditScheduleScreen
 import com.example.smartmosque.features.notification.NotificationScreen
 import com.example.smartmosque.features.profile.ProfileDetailScreen
 import com.example.smartmosque.features.profile.EditProfileScreen
@@ -71,9 +74,10 @@ class MainActivity : ComponentActivity() {
 
         // Subscribe ke Topik FCM (Bungkus try-catch agar aman)
         try {
-            FirebaseMessaging.getInstance().subscribeToTopic("general")
-            FirebaseMessaging.getInstance().subscribeToTopic("waqf")
-            FirebaseMessaging.getInstance().subscribeToTopic("events")
+            FirebaseMessaging.getInstance().subscribeToTopic("system")    // Untuk pemeliharaan/update aplikasi
+            FirebaseMessaging.getInstance().subscribeToTopic("wakaf")     // Untuk program wakaf baru
+            FirebaseMessaging.getInstance().subscribeToTopic("schedule")  // Untuk agenda kajian masjid
+            Log.d("MainActivity", "FCM Berhasil Subscribe ke semua topik utama")
         } catch (e: Exception) {
             Log.e("MainActivity", "FCM Subscribe error: ${e.message}")
         }
@@ -149,15 +153,33 @@ fun AppNavigation() {
             composable(Screen.Finance.route) {
                 com.example.smartmosque.features.finance.FinanceScreen(navController, authViewModel, financeViewModel)
             }
+
             composable(Screen.AddFinance.route) {
-                com.example.smartmosque.features.finance.AddEditFinanceScreen(navController, financeViewModel, authViewModel)
+                // Kelola inisialisasi dengan fungsi viewModel() agar aman dari badai recomposition
+                val adminFinanceViewModel: AdminFinanceViewModel = viewModel()
+
+                AddEditFinanceScreen(
+                    navController = navController,
+                    financeViewModel = adminFinanceViewModel,
+                    authViewModel = authViewModel
+                )
             }
+
             composable(
                 route = Screen.EditFinance.route,
                 arguments = listOf(navArgument("transactionId") { type = NavType.StringType })
             ) { backStackEntry ->
                 val transactionId = backStackEntry.arguments?.getString("transactionId")
-                com.example.smartmosque.features.finance.AddEditFinanceScreen(navController, financeViewModel, authViewModel, transactionId)
+
+                // Kelola inisialisasi secara mandiri khusus untuk layar edit ini
+                val adminFinanceViewModel: AdminFinanceViewModel = viewModel()
+
+                AddEditFinanceScreen(
+                    navController = navController,
+                    financeViewModel = adminFinanceViewModel,
+                    authViewModel = authViewModel,
+                    transactionId = transactionId
+                )
             }
 
             // --- SCHEDULE
@@ -177,8 +199,12 @@ fun AppNavigation() {
                 )
             }
 
-            composable(route = Screen.AddSchedule.route){
-                AddScheduleScreen(navController = navController)
+            composable(route = Screen.AddSchedule.route) {
+                val adminScheduleViewModel: AdminScheduleViewModel = viewModel()
+                AddScheduleScreen(
+                    navController = navController,
+                    viewModel = adminScheduleViewModel
+                )
             }
 
             composable(
@@ -186,9 +212,12 @@ fun AppNavigation() {
                 arguments = listOf(navArgument("scheduleId") { type = NavType.StringType })
             ) { backStackEntry ->
                 val scheduleId = backStackEntry.arguments?.getString("scheduleId") ?: ""
+                val adminScheduleViewModel: AdminScheduleViewModel = viewModel() // Menghidupkan scope Lifecycle VM
+
                 EditScheduleScreen(
                     navController = navController,
-                    scheduleId = scheduleId
+                    scheduleId = scheduleId,
+                    viewModel = adminScheduleViewModel
                 )
             }
 

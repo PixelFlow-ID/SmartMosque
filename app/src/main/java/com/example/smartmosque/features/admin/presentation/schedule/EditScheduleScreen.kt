@@ -1,4 +1,4 @@
-package com.example.smartmosque.features.schedule
+package com.example.smartmosque.features.admin.presentation.schedule
 
 import android.app.DatePickerDialog
 import android.widget.DatePicker
@@ -24,9 +24,6 @@ import androidx.navigation.NavController
 import com.example.smartmosque.ui.theme.BgPremium
 import com.example.smartmosque.ui.theme.EmeraldDeep
 import com.example.smartmosque.ui.theme.White
-import com.google.firebase.Firebase
-import com.google.firebase.Timestamp
-import com.google.firebase.firestore.firestore
 import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Date
@@ -36,22 +33,25 @@ import java.util.Locale
 @Composable
 fun EditScheduleScreen(
     navController: NavController,
-    scheduleId: String // ID dokumen yang akan diedit
+    scheduleId: String,
+    viewModel: AdminScheduleViewModel
 ) {
     val context = LocalContext.current
-    val db = Firebase.firestore
+    val isLoading by viewModel.isLoading.collectAsState()
+    val isSaving by viewModel.isSaving.collectAsState()
 
-    // State untuk Form
+    // State lokal untuk form
     var title by remember { mutableStateOf("") }
     var speaker by remember { mutableStateOf("") }
     var location by remember { mutableStateOf("") }
-    var time by remember { mutableStateOf("") }
+    var streamingUrl by remember { mutableStateOf("") } // Ditambahkan agar klop dengan ViewModel
     var category by remember { mutableStateOf("") }
     var selectedDate by remember { mutableStateOf<Date?>(null) }
-    var isLoading by remember { mutableStateOf(true) }
-    var isSaving by remember { mutableStateOf(false) }
 
-    // Calendar Helper
+    // Pecahan jam untuk mempermudah form sinkron dengan penambahan data
+    var startTime by remember { mutableStateOf("18:00") }
+    var endTime by remember { mutableStateOf("20:00") }
+
     val calendar = Calendar.getInstance()
     val datePickerDialog = DatePickerDialog(
         context,
@@ -64,27 +64,36 @@ fun EditScheduleScreen(
         calendar.get(Calendar.DAY_OF_MONTH)
     )
 
-    // --- FETCH DATA LAMA ---
+    // --- FETCH DATA LAMA VIA VIEWMODEL ---
     LaunchedEffect(scheduleId) {
-        db.collection("schedules").document(scheduleId).get()
-            .addOnSuccessListener { doc ->
+        viewModel.fetchScheduleDetail(
+            id = scheduleId,
+            onSuccess = { doc ->
                 if (doc.exists()) {
                     title = doc.getString("title") ?: ""
                     speaker = doc.getString("speaker") ?: ""
                     location = doc.getString("location") ?: ""
-                    time = doc.getString("time") ?: ""
+                    streamingUrl = doc.getString("streamingUrl") ?: ""
                     category = doc.getString("category") ?: ""
                     selectedDate = doc.getTimestamp("date")?.toDate()
+
+                    // Memecah kembali string "18:00 - 20:00" dari Firebase menjadi startTime & endTime
+                    val rawTime = doc.getString("time") ?: "18:00 - 20:00"
+                    val timeParts = rawTime.split(" - ")
+                    if (timeParts.size == 2) {
+                        startTime = timeParts[0]
+                        endTime = timeParts[1]
+                    }
                 } else {
                     Toast.makeText(context, "Data tidak ditemukan", Toast.LENGTH_SHORT).show()
                     navController.popBackStack()
                 }
-                isLoading = false
+            },
+            onError = { errorMessage ->
+                Toast.makeText(context, errorMessage, Toast.LENGTH_SHORT).show()
+                navController.popBackStack()
             }
-            .addOnFailureListener {
-                Toast.makeText(context, "Gagal memuat data", Toast.LENGTH_SHORT).show()
-                isLoading = false
-            }
+        )
     }
 
     Scaffold(
@@ -114,7 +123,6 @@ fun EditScheduleScreen(
                     .padding(24.dp),
                 verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
-                // Form Fields
                 OutlinedTextField(
                     value = title,
                     onValueChange = { title = it },
@@ -131,36 +139,44 @@ fun EditScheduleScreen(
                     shape = RoundedCornerShape(12.dp)
                 )
 
-                // Date Picker Field
-                OutlinedTextField(
-                    value = if (selectedDate != null) SimpleDateFormat("dd MMMM yyyy", Locale("id", "ID")).format(selectedDate!!) else "",
-                    onValueChange = {},
-                    label = { Text("Tanggal") },
-                    readOnly = true,
-                    trailingIcon = { Icon(Icons.Default.CalendarToday, null) },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable { datePickerDialog.show() }, // Trigger Dialog saat diklik
-                    enabled = false, // Disable typing manual
-                    colors = OutlinedTextFieldDefaults.colors(
-                        disabledTextColor = Color.Black,
-                        disabledBorderColor = Color.Gray,
-                        disabledLabelColor = Color.Gray
-                    )
-                )
-                // Overlay agar area textfield bisa diklik walau disabled
+                // PERBAIKAN: Cara bersih membuat TextField DatePicker bisa diklik tanpa trik Box gaib melayang
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(56.dp) // Tinggi standar TextField
-                        .offset(y = (-72).dp) // Tarik ke atas menimpa TextField
                         .clickable { datePickerDialog.show() }
+                ) {
+                    OutlinedTextField(
+                        value = if (selectedDate != null) SimpleDateFormat("dd MMMM yyyy", Locale("id", "ID")).format(selectedDate!!) else "",
+                        onValueChange = {},
+                        label = { Text("Tanggal") },
+                        readOnly = true,
+                        trailingIcon = { Icon(Icons.Default.CalendarToday, null) },
+                        modifier = Modifier.fillMaxWidth(),
+                        // Properti di bawah ini dikunci agar event klik ditangani sepenuhnya oleh Box pembungkusnya
+                        enabled = false,
+                        colors = OutlinedTextFieldDefaults.colors(
+                            disabledTextColor = Color.Black,
+                            disabledBorderColor = Color.Gray,
+                            disabledLabelColor = Color.Gray,
+                            disabledTrailingIconColor = EmeraldDeep
+                        )
+                    )
+                }
+
+                // Input jam mulai
+                OutlinedTextField(
+                    value = startTime,
+                    onValueChange = { startTime = it },
+                    label = { Text("Jam Mulai (Contoh: 18:00)") },
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp)
                 )
 
+                // Input jam selesai
                 OutlinedTextField(
-                    value = time,
-                    onValueChange = { time = it },
-                    label = { Text("Waktu (Contoh: 18.00 - Selesai)") },
+                    value = endTime,
+                    onValueChange = { endTime = it },
+                    label = { Text("Jam Selesai (Contoh: 20:00)") },
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(12.dp)
                 )
@@ -169,6 +185,14 @@ fun EditScheduleScreen(
                     value = location,
                     onValueChange = { location = it },
                     label = { Text("Lokasi") },
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp)
+                )
+
+                OutlinedTextField(
+                    value = streamingUrl,
+                    onValueChange = { streamingUrl = it },
+                    label = { Text("Link YouTube (Opsional)") },
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(12.dp)
                 )
@@ -183,31 +207,29 @@ fun EditScheduleScreen(
 
                 Spacer(modifier = Modifier.height(20.dp))
 
-                // Tombol Simpan
+                // --- TOMBOL SIMPAN VIA VIEWMODEL ---
                 Button(
                     onClick = {
                         if (title.isNotEmpty() && selectedDate != null) {
-                            isSaving = true
-                            val updates = hashMapOf<String, Any>(
-                                "title" to title,
-                                "speaker" to speaker,
-                                "time" to time,
-                                "location" to location,
-                                "category" to category,
-                                "date" to Timestamp(selectedDate!!)
-                            )
-
-                            db.collection("schedules").document(scheduleId)
-                                .update(updates)
-                                .addOnSuccessListener {
-                                    isSaving = false
+                            // PERBAIKAN: Parameter disamakan persis dengan updateSchedule di ViewModel baru kita
+                            viewModel.updateSchedule(
+                                id = scheduleId,
+                                title = title,
+                                speaker = speaker,
+                                location = location,
+                                category = category,
+                                streamingUrl = streamingUrl,
+                                startTime = startTime,
+                                endTime = endTime,
+                                selectedDate = selectedDate!!,
+                                onSuccess = {
                                     Toast.makeText(context, "Jadwal berhasil diperbarui", Toast.LENGTH_SHORT).show()
                                     navController.popBackStack()
+                                },
+                                onError = { errorMessage ->
+                                    Toast.makeText(context, "Gagal: $errorMessage", Toast.LENGTH_SHORT).show()
                                 }
-                                .addOnFailureListener {
-                                    isSaving = false
-                                    Toast.makeText(context, "Gagal memperbarui: ${it.message}", Toast.LENGTH_SHORT).show()
-                                }
+                            )
                         } else {
                             Toast.makeText(context, "Mohon lengkapi judul dan tanggal", Toast.LENGTH_SHORT).show()
                         }

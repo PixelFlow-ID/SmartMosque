@@ -1,7 +1,6 @@
-package com.example.smartmosque.features.donation
+package com.example.smartmosque.features.admin.presentation.waqf
 
 import android.widget.Toast
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -11,7 +10,6 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.AttachMoney
-import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.Title
@@ -22,38 +20,38 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
-import com.google.firebase.firestore.firestore
-import com.google.firebase.Firebase
-import com.google.firebase.Timestamp
 
 // --- IMPORT WARNA DARI THEME ---
-import com.example.smartmosque.ui.theme.GreenPrimary
 import com.example.smartmosque.ui.theme.EmeraldDeep
 import com.example.smartmosque.ui.theme.White
 import com.example.smartmosque.ui.theme.TextColorPrimary
 import com.example.smartmosque.ui.theme.TextColorSecondary
 import com.example.smartmosque.ui.theme.BgPremium
-import com.example.smartmosque.ui.theme.GrayInputBackground
 import com.example.smartmosque.ui.theme.GrayInactive
+import androidx.lifecycle.viewmodel.compose.viewModel
+import com.example.smartmosque.features.admin.components.PremiumWaqfInput
+import com.example.smartmosque.features.admin.components.ProgramTypeCard
 
 @Composable
-fun AddWaqfProgramScreen(navController: NavController) {
+fun AddWaqfProgramScreen(
+    navController: NavController,
+    viewModel: AdminViewModel = viewModel()
+) {
     var title by remember { mutableStateOf("") }
     var description by remember { mutableStateOf("") }
-    var imageUrl by remember { mutableStateOf("") } // Tambahan input gambar
+    var imageUrl by remember { mutableStateOf("") }
     var targetAmount by remember { mutableStateOf("") }
     var programType by remember { mutableStateOf("Waqf") }
 
-    var isLoading by remember { mutableStateOf(false) }
+    val isLoading by viewModel.isLoading.collectAsState()
     val context = LocalContext.current
 
     Scaffold(
-        containerColor = BgPremium, // Background Soft
+        containerColor = BgPremium,
         contentWindowInsets = WindowInsets(0.dp)
     ) { paddingValues ->
         Column(
@@ -183,40 +181,20 @@ fun AddWaqfProgramScreen(navController: NavController) {
             // 5. TOMBOL SIMPAN
             Button(
                 onClick = {
-                    // Validasi
-                    when {
-                        title.isBlank() -> Toast.makeText(context, "Judul wajib diisi", Toast.LENGTH_SHORT).show()
-                        description.isBlank() -> Toast.makeText(context, "Deskripsi wajib diisi", Toast.LENGTH_SHORT).show()
-                        targetAmount.isBlank() -> Toast.makeText(context, "Target dana wajib diisi", Toast.LENGTH_SHORT).show()
-                        else -> {
-                            isLoading = true
-
-                            val programData = hashMapOf(
-                                "title" to title,
-                                "description" to description,
-                                "imageUrl" to imageUrl, // Simpan Gambar
-                                "targetAmount" to (targetAmount.toLongOrNull() ?: 0L),
-                                "collectedAmount" to 0L,
-                                "type" to programType,
-                                "status" to "active",
-
-                                // PENTING: Timestamp ini yang memicu notifikasi merah di Home
-                                "createdAt" to Timestamp.now()
-                            )
-
-                            Firebase.firestore.collection("waqf_programs")
-                                .add(programData)
-                                .addOnSuccessListener {
-                                    isLoading = false
-                                    Toast.makeText(context, "Program berhasil diterbitkan!", Toast.LENGTH_SHORT).show()
-                                    navController.popBackStack()
-                                }
-                                .addOnFailureListener { e ->
-                                    isLoading = false
-                                    Toast.makeText(context, "Gagal: ${e.message}", Toast.LENGTH_SHORT).show()
-                                }
+                    viewModel.publishProgram(
+                        title = title,
+                        description = description,
+                        imageUrl = imageUrl,
+                        targetAmountStr = targetAmount,
+                        programType = programType,
+                        onSuccess = {
+                            Toast.makeText(context, "Program berhasil diterbitkan!", Toast.LENGTH_SHORT).show()
+                            navController.popBackStack()
+                        },
+                        onError = { message ->
+                            Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
                         }
-                    }
+                    )
                 },
                 modifier = Modifier
                     .fillMaxWidth()
@@ -236,72 +214,4 @@ fun AddWaqfProgramScreen(navController: NavController) {
             Spacer(modifier = Modifier.height(24.dp))
         }
     }
-}
-
-// --- KOMPONEN UI PREMIUM ---
-
-@Composable
-fun ProgramTypeCard(
-    title: String,
-    isSelected: Boolean,
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier
-) {
-    Surface(
-        onClick = onClick,
-        shape = RoundedCornerShape(12.dp),
-        color = if (isSelected) EmeraldDeep else White,
-        border = if (!isSelected) BorderStroke(1.dp, GrayInputBackground) else null,
-        shadowElevation = if (isSelected) 4.dp else 0.dp,
-        modifier = modifier.height(45.dp)
-    ) {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.Center,
-            modifier = Modifier.fillMaxSize()
-        ) {
-            if (isSelected) {
-                Icon(Icons.Default.Check, null, tint = White, modifier = Modifier.size(16.dp))
-                Spacer(modifier = Modifier.width(6.dp))
-            }
-            Text(
-                text = title,
-                fontSize = 12.sp,
-                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
-                color = if (isSelected) White else TextColorSecondary
-            )
-        }
-    }
-}
-
-@Composable
-fun PremiumWaqfInput(
-    value: String,
-    onValueChange: (String) -> Unit,
-    label: String,
-    placeholder: String,
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
-    isMultiLine: Boolean = false
-) {
-    OutlinedTextField(
-        value = value,
-        onValueChange = onValueChange,
-        label = { Text(label, fontSize = 12.sp) },
-        placeholder = { Text(placeholder, fontSize = 12.sp, color = GrayInactive) },
-        leadingIcon = { Icon(icon, null, tint = EmeraldDeep) },
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(if (isMultiLine) 120.dp else 60.dp),
-        shape = RoundedCornerShape(12.dp),
-        colors = OutlinedTextFieldDefaults.colors(
-            focusedBorderColor = EmeraldDeep,
-            unfocusedBorderColor = GrayInactive,
-            focusedLabelColor = EmeraldDeep,
-            cursorColor = EmeraldDeep,
-            focusedContainerColor = White,
-            unfocusedContainerColor = BgPremium.copy(alpha = 0.3f)
-        ),
-        keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences),
-        maxLines = if (isMultiLine) 5 else 1
-    )
 }

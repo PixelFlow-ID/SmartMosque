@@ -181,21 +181,15 @@ fun ScheduleScreen(
                                         )
                                     }
                                 },
-                                onReminderClick = {
-                                    val date = schedule.date?.toDate()
-                                    if (date != null) {
-                                        try {
-                                            val intent = Intent(Intent.ACTION_INSERT).apply {
-                                                data = CalendarContract.Events.CONTENT_URI
-                                                putExtra(CalendarContract.Events.TITLE, schedule.title)
-                                                putExtra(CalendarContract.Events.EVENT_LOCATION, schedule.location)
-                                                putExtra(CalendarContract.Events.DESCRIPTION, "Pembicara: ${schedule.speaker}")
-                                                putExtra(CalendarContract.EXTRA_EVENT_BEGIN_TIME, date.time)
-                                                putExtra(CalendarContract.EXTRA_EVENT_END_TIME, date.time + (2 * 60 * 60 * 1000))
-                                            }
-                                            context.startActivity(intent)
-                                        } catch (e: Exception) { Toast.makeText(context, "Tidak ada aplikasi kalender", Toast.LENGTH_SHORT).show() }
-                                    }
+                                onReminderClick = { activeStatus ->
+                                    scheduleViewModel.toggleReminder(
+                                        context = context,
+                                        schedule = schedule,
+                                        isReminderActive = activeStatus, // Sekarang dinamis mengikuti ketukan jari user
+                                        onResult = { message ->
+                                            Toast.makeText(context, message, Toast.LENGTH_LONG).show()
+                                        }
+                                    )
                                 }
                             )
                         }
@@ -271,9 +265,19 @@ fun CleanScheduleCard(
     onPublish: () -> Unit,
     onMarkAsFinished: () -> Unit,
     onJoinToggle: () -> Unit,
-    onReminderClick: () -> Unit
+    onReminderClick: (Boolean) -> Unit // MODIFIKASI: Mengirimkan status boolean ke Screen utama
 ) {
-    val dateObj = schedule.date?.toDate() ?: Date()
+    // State lokal untuk memantau apakah pengingat untuk jadwal ini aktif atau tidak di HP user
+    var isReminderActive by remember { mutableStateOf(false) }
+
+    // Mengamankan pembacaan date dari Firebase model (jika tipe aslinya Timestamp atau Date)
+    val dateObj = try {
+        // Asumsi properti .date di kelas model kamu adalah com.google.firebase.Timestamp
+        schedule.date?.toDate() ?: Date()
+    } catch (e: Exception) {
+        Date() // Fallback aman jika data kosong
+    }
+
     val dayStr = SimpleDateFormat("dd", Locale("id", "ID")).format(dateObj)
     val monthStr = SimpleDateFormat("MMM", Locale("id", "ID")).format(dateObj).uppercase()
     val totalAttendees = schedule.participantsOnline.size + schedule.participantsOffline.size
@@ -390,13 +394,25 @@ fun CleanScheduleCard(
                 } else {
                     Text("$totalAttendees akan hadir", fontSize = 12.sp, color = TextColorSecondary)
                     Row {
+                        // PERBAIKAN: Tombol lonceng akan berubah warna jika isReminderActive bernilai true
                         FilledIconButton(
-                            onClick = onReminderClick,
+                            onClick = {
+                                isReminderActive = !isReminderActive
+                                onReminderClick(isReminderActive)
+                            },
                             enabled = !isEventEnded,
-                            colors = IconButtonDefaults.filledIconButtonColors(containerColor = Color(0xFFF5F5F5), disabledContainerColor = Color(0xFFEEEEEE)),
+                            colors = IconButtonDefaults.filledIconButtonColors(
+                                containerColor = if (isReminderActive) Color(0xFFFFF3E0) else Color(0xFFF5F5F5),
+                                disabledContainerColor = Color(0xFFEEEEEE)
+                            ),
                             modifier = Modifier.size(36.dp)
                         ) {
-                            Icon(Icons.Outlined.NotificationsActive, null, tint = if (isEventEnded) Color.Gray else Color(0xFFFF9800), modifier = Modifier.size(18.dp))
+                            Icon(
+                                imageVector = Icons.Outlined.NotificationsActive,
+                                contentDescription = null,
+                                tint = if (isEventEnded) Color.Gray else if (isReminderActive) Color(0xFFFF9800) else Color.Gray,
+                                modifier = Modifier.size(18.dp)
+                            )
                         }
                         Spacer(modifier = Modifier.width(8.dp))
                         Button(
@@ -420,5 +436,3 @@ fun CleanScheduleCard(
         }
     }
 }
-
-// Sub-komponen (CleanScheduleCard & CleanFilterButton) tetap berada di bawah file ini tanpa perubahan logika UI.

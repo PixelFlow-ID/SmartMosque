@@ -1,6 +1,5 @@
 package com.example.smartmosque.features.profile
 
-import android.annotation.SuppressLint
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -38,6 +37,11 @@ import java.text.NumberFormat
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import android.annotation.SuppressLint
+import android.widget.Toast
+import androidx.compose.ui.platform.LocalContext
+import com.google.firebase.messaging.FirebaseMessaging
+
 
 // --- IMPORT WARNA DARI TEMA ---
 import com.example.smartmosque.ui.theme.EmeraldDeep
@@ -55,6 +59,8 @@ fun ProfileDetailScreen(
     navController: NavController,
     authViewModel: AuthViewModel
 ) {
+    val context = LocalContext.current
+
     // 1. Ambil Data User Realtime
     val currentUser by authViewModel.currentUser.collectAsState()
     val isLoggedIn = currentUser != null
@@ -63,7 +69,7 @@ fun ProfileDetailScreen(
     // --- STATE UNTUK STATISTIK & ROLE ---
     var totalDonation by remember { mutableLongStateOf(0L) }
     var totalEvents by remember { mutableIntStateOf(0) }
-    var userRoleLabel by remember { mutableStateOf("Member") } // Default Member
+    var userRoleLabel by remember { mutableStateOf("Member") }
 
     // --- LOGIC: HITUNG DONASI, EVENT, & CEK ROLE ---
     LaunchedEffect(userId) {
@@ -110,14 +116,12 @@ fun ProfileDetailScreen(
     val displayName = if (isLoggedIn) (currentUser?.displayName ?: "Jamaah Baru") else "Tamu"
     val email = if (isLoggedIn) (currentUser?.email ?: "-") else "Mode Tamu"
 
-    // Formatter Rupiah
     val donationFormatted = remember(totalDonation) {
         val format = NumberFormat.getCurrencyInstance(Locale("id", "ID"))
         format.maximumFractionDigits = 0
         format.format(totalDonation)
     }
 
-    // Inisial Nama
     val initials = remember(displayName) {
         if (isLoggedIn) {
             displayName.split(" ")
@@ -128,7 +132,6 @@ fun ProfileDetailScreen(
         } else "?"
     }
 
-    // Tanggal Bergabung
     val joinDate = remember(currentUser) {
         if (isLoggedIn) {
             val creationTime = currentUser?.metadata?.creationTimestamp ?: System.currentTimeMillis()
@@ -174,9 +177,8 @@ fun ProfileDetailScreen(
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
 
-            // --- 1. HEADER PROFILE (Avatar Bulat Besar) ---
+            // --- 1. HEADER PROFILE ---
             Box(contentAlignment = Alignment.BottomEnd) {
-                // Avatar
                 Box(
                     modifier = Modifier
                         .size(100.dp)
@@ -185,18 +187,11 @@ fun ProfileDetailScreen(
                         .background(EmeraldDeep),
                     contentAlignment = Alignment.Center
                 ) {
-                    Text(
-                        text = initials,
-                        fontSize = 36.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = White
-                    )
+                    Text(text = initials, fontSize = 36.sp, fontWeight = FontWeight.Bold, color = White)
                 }
 
-                // Badge Status
                 if (isLoggedIn) {
                     val badgeColor = if (userRoleLabel == "Admin") Color(0xFFD4AF37) else EmeraldDeep
-
                     Box(
                         modifier = Modifier
                             .offset(x = 5.dp, y = 5.dp)
@@ -205,30 +200,14 @@ fun ProfileDetailScreen(
                             .border(2.dp, badgeColor, RoundedCornerShape(20.dp))
                             .padding(horizontal = 10.dp, vertical = 4.dp)
                     ) {
-                        Text(
-                            text = userRoleLabel,
-                            fontSize = 10.sp,
-                            color = badgeColor,
-                            fontWeight = FontWeight.Bold
-                        )
+                        Text(text = userRoleLabel, fontSize = 10.sp, color = badgeColor, fontWeight = FontWeight.Bold)
                     }
                 }
             }
 
             Spacer(modifier = Modifier.height(16.dp))
-
-            Text(
-                text = displayName,
-                fontSize = 20.sp,
-                fontWeight = FontWeight.Bold,
-                color = TextColorPrimary
-            )
-            Text(
-                text = email,
-                fontSize = 12.sp,
-                color = TextColorSecondary
-            )
-
+            Text(text = displayName, fontSize = 20.sp, fontWeight = FontWeight.Bold, color = TextColorPrimary)
+            Text(text = email, fontSize = 12.sp, color = TextColorSecondary)
             Spacer(modifier = Modifier.height(30.dp))
 
             // --- 2. STATISTIK ---
@@ -269,13 +248,11 @@ fun ProfileDetailScreen(
 
             Spacer(modifier = Modifier.height(24.dp))
 
-            // --- 4. PENGATURAN ---
+            // --- 4. PENGATURAN (PREFERENSI NOTIFIKASI YANG DISELARASKAN) ---
             if (isLoggedIn) {
                 Text("Preferensi", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = TextColorPrimary, modifier = Modifier.align(Alignment.Start))
                 Spacer(modifier = Modifier.height(10.dp))
 
-                // Ambil Context untuk menampilkan Toast
-                val context = androidx.compose.ui.platform.LocalContext.current
                 val notifSettings by authViewModel.notifSettings.collectAsState()
 
                 Card(
@@ -286,32 +263,47 @@ fun ProfileDetailScreen(
                 ) {
                     Column(modifier = Modifier.padding(vertical = 8.dp)) {
 
-                        // SWITCH 1: JADWAL
+                        // SWITCH 1: NOTIFIKASI JADWAL KAJIAN
                         PremiumToggleItem(
                             icon = Icons.Outlined.Notifications,
                             title = "Notifikasi Jadwal",
-                            isChecked = notifSettings["events"] ?: true,
+                            isChecked = notifSettings["schedule"] ?: true, // Diubah dari "events" ke "schedule"
                             onToggle = { isChecked ->
-                                // 1. Update Logic
-                                authViewModel.toggleNotification("events", isChecked)
-                                // 2. Tampilkan Pesan
+                                // A. Update ke Firestore Database via ViewModel
+                                authViewModel.toggleNotification("schedule", isChecked)
+
+                                // B. Sinkronisasi Langsung ke Topik FCM Android System
+                                if (isChecked) {
+                                    FirebaseMessaging.getInstance().subscribeToTopic("schedule")
+                                } else {
+                                    FirebaseMessaging.getInstance().unsubscribeFromTopic("schedule")
+                                }
+
                                 val msg = if (isChecked) "Notifikasi Jadwal Diaktifkan" else "Notifikasi Jadwal Dimatikan"
-                                android.widget.Toast.makeText(context, msg, android.widget.Toast.LENGTH_SHORT).show()
+                                Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
                             }
                         )
 
                         PremiumDivider()
 
-                        // SWITCH 2: DONASI
+                        // SWITCH 2: NOTIFIKASI PROGRAM WAKAF & DONASI
                         PremiumToggleItem(
                             icon = Icons.Outlined.AttachMoney,
-                            title = "Info Donasi",
-                            isChecked = notifSettings["donations"] ?: true,
+                            title = "Info Donasi & Wakaf",
+                            isChecked = notifSettings["wakaf"] ?: true, // Diubah dari "donations" ke "wakaf"
                             onToggle = { isChecked ->
-                                authViewModel.toggleNotification("donations", isChecked)
+                                // A. Update ke Firestore Database via ViewModel
+                                authViewModel.toggleNotification("wakaf", isChecked)
 
-                                val msg = if (isChecked) "Info Donasi Diaktifkan" else "Info Donasi Dimatikan"
-                                android.widget.Toast.makeText(context, msg, android.widget.Toast.LENGTH_SHORT).show()
+                                // B. Sinkronisasi Langsung ke Topik FCM Android System
+                                if (isChecked) {
+                                    FirebaseMessaging.getInstance().subscribeToTopic("wakaf")
+                                } else {
+                                    FirebaseMessaging.getInstance().unsubscribeFromTopic("wakaf")
+                                }
+
+                                val msg = if (isChecked) "Info Donasi & Wakaf Diaktifkan" else "Info Donasi & Wakaf Dimatikan"
+                                Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
                             }
                         )
                     }
@@ -323,13 +315,19 @@ fun ProfileDetailScreen(
             if (isLoggedIn) {
                 Button(
                     onClick = {
+                        // Opsional: Sebelum logout, bersihkan semua subscribe topik agar user lama tidak menerima notif masjid lagi
+                        try {
+                            FirebaseMessaging.getInstance().unsubscribeFromTopic("system")
+                            FirebaseMessaging.getInstance().unsubscribeFromTopic("schedule")
+                            FirebaseMessaging.getInstance().unsubscribeFromTopic("wakaf")
+                        } catch (e: Exception) { /* ignore */ }
+
                         authViewModel.logout()
                         navController.navigate(Screen.Login.route) { popUpTo(0) { inclusive = true } }
                     },
                     modifier = Modifier.fillMaxWidth().height(50.dp),
                     colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFEE2E2)),
-                    shape = RoundedCornerShape(12.dp),
-                    elevation = ButtonDefaults.buttonElevation(0.dp)
+                    shape = RoundedCornerShape(12.dp)
                 ) {
                     Icon(Icons.AutoMirrored.Outlined.Logout, null, tint = RedError)
                     Spacer(modifier = Modifier.width(8.dp))
@@ -351,96 +349,28 @@ fun ProfileDetailScreen(
     }
 }
 
-// --- KOMPONEN UI PREMIUM ---
+// --- KOMPONEN UI TAMBAHAN (TETAP SAMA) ---
+@Composable fun PremiumStatColumn(value: String, label: String) { Column(horizontalAlignment = Alignment.CenterHorizontally) { Text(value, fontSize = 16.sp, fontWeight = FontWeight.Bold, color = EmeraldDeep); Text(label, fontSize = 11.sp, color = TextColorSecondary) } }
+@Composable fun PremiumProfileItem(icon: ImageVector, title: String, value: String) { Row(modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 14.dp), verticalAlignment = Alignment.CenterVertically) { Box(modifier = Modifier.size(36.dp).background(EmeraldDeep, CircleShape), contentAlignment = Alignment.Center) { Icon(icon, null, tint = White, modifier = Modifier.size(18.dp)) }; Spacer(modifier = Modifier.width(16.dp)); Column { Text(title, fontSize = 11.sp, color = TextColorSecondary); Text(value, fontSize = 14.sp, color = TextColorPrimary, fontWeight = FontWeight.Medium) } } }
+@Composable fun PremiumDivider() { HorizontalDivider(color = GrayInputBackground.copy(alpha = 0.5f), thickness = 1.dp, modifier = Modifier.padding(start = 72.dp)) }
 
 @Composable
-fun PremiumStatColumn(value: String, label: String) {
-    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-        Text(value, fontSize = 16.sp, fontWeight = FontWeight.Bold, color = EmeraldDeep)
-        Text(label, fontSize = 11.sp, color = TextColorSecondary)
-    }
-}
-
-@Composable
-fun PremiumProfileItem(icon: ImageVector, title: String, value: String) {
+fun PremiumToggleItem(icon: ImageVector, title: String, isChecked: Boolean, onToggle: (Boolean) -> Unit) {
     Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 20.dp, vertical = 14.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Box(
-            modifier = Modifier
-                .size(36.dp)
-                .background(EmeraldDeep, CircleShape),
-            contentAlignment = Alignment.Center
-        ) {
-            Icon(icon, null, tint = White, modifier = Modifier.size(18.dp))
-        }
-        Spacer(modifier = Modifier.width(16.dp))
-        Column {
-            Text(title, fontSize = 11.sp, color = TextColorSecondary)
-            Text(value, fontSize = 14.sp, color = TextColorPrimary, fontWeight = FontWeight.Medium)
-        }
-    }
-}
-
-// [UPDATE] Komponen Toggle yang Stateless (Menerima isChecked dari luar)
-@Composable
-fun PremiumToggleItem(
-    icon: ImageVector,
-    title: String,
-    isChecked: Boolean, // Mengganti initialChecked dengan isChecked (Langsung)
-    onToggle: (Boolean) -> Unit
-) {
-    // Kita hapus variable 'checked' lokal. Kita percaya penuh pada 'isChecked' dari parameter.
-
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable {
-                // Saat diklik, minta toggle nilai kebalikannya
-                onToggle(!isChecked)
-            }
-            .padding(horizontal = 20.dp, vertical = 10.dp),
+        modifier = Modifier.fillMaxWidth().clickable { onToggle(!isChecked) }.padding(horizontal = 20.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceBetween
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Box(
-                modifier = Modifier
-                    .size(36.dp)
-                    .background(EmeraldDeep, CircleShape),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(icon, null, tint = White, modifier = Modifier.size(18.dp))
-            }
+            Box(modifier = Modifier.size(36.dp).background(EmeraldDeep, CircleShape), contentAlignment = Alignment.Center) { Icon(icon, null, tint = White, modifier = Modifier.size(18.dp)) }
             Spacer(modifier = Modifier.width(16.dp))
             Text(title, fontSize = 14.sp, fontWeight = FontWeight.Medium, color = TextColorPrimary)
         }
-
         Switch(
-            checked = isChecked, // Menggunakan value dari parameter
-            onCheckedChange = { newVal ->
-                onToggle(newVal)
-            },
-            colors = SwitchDefaults.colors(
-                checkedThumbColor = White,
-                checkedTrackColor = EmeraldDeep,
-                uncheckedThumbColor = White,
-                uncheckedTrackColor = GrayInputBackground,
-                uncheckedBorderColor = Color.Transparent
-            ),
+            checked = isChecked,
+            onCheckedChange = { onToggle(it) },
+            colors = SwitchDefaults.colors(checkedThumbColor = White, checkedTrackColor = EmeraldDeep, uncheckedThumbColor = White, uncheckedTrackColor = GrayInputBackground, uncheckedBorderColor = Color.Transparent),
             modifier = Modifier.scale(0.8f)
         )
     }
-}
-
-@Composable
-fun PremiumDivider() {
-    HorizontalDivider(
-        color = GrayInputBackground.copy(alpha = 0.5f),
-        thickness = 1.dp,
-        modifier = Modifier.padding(start = 72.dp)
-    )
 }

@@ -1,4 +1,4 @@
-package com.example.smartmosque.features.schedule
+package com.example.smartmosque.core.reminder
 
 import android.app.AlarmManager
 import android.app.NotificationChannel
@@ -190,7 +190,9 @@ class ReminderBroadcastReceiver : BroadcastReceiver() {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
         
-        val notification = NotificationCompat.Builder(context, ReminderNotificationManager.CHANNEL_ID)
+        val notification = NotificationCompat.Builder(context,
+            ReminderNotificationManager.CHANNEL_ID
+        )
             .setSmallIcon(R.drawable.ic_launcher_foreground)
             .setContentTitle("Pengingat: $title")
             .setContentText("Acara akan dimulai pukul $time. Jangan sampai terlewat!")

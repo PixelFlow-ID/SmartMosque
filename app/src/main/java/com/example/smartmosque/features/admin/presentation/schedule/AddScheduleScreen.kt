@@ -1,4 +1,4 @@
-package com.example.smartmosque.features.schedule
+package com.example.smartmosque.features.admin.presentation.schedule
 
 import android.app.DatePickerDialog
 import android.app.TimePickerDialog
@@ -36,8 +36,6 @@ import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
-import com.google.firebase.Timestamp
-import com.google.firebase.firestore.FirebaseFirestore
 import java.text.SimpleDateFormat
 import java.util.*
 
@@ -50,76 +48,53 @@ import com.example.smartmosque.ui.theme.BgPremium
 import com.example.smartmosque.ui.theme.GrayInputBackground
 import com.example.smartmosque.ui.theme.GrayInactive
 
-@Composable
-fun AddScheduleScreen(navController: NavController) {
-    val context = LocalContext.current
-    val firestore = FirebaseFirestore.getInstance()
 
-    // State Input
+@Composable
+fun AddScheduleScreen(
+    navController: NavController,
+    viewModel: AdminScheduleViewModel // Injeksi ViewModel Baru
+) {
+    val context = LocalContext.current
+    val isLoading by viewModel.isLoading.collectAsState()
+
+    // State Input UI Lokal tetap dipertahankan di Screen
     var title by remember { mutableStateOf("") }
     var speaker by remember { mutableStateOf("") }
     var location by remember { mutableStateOf("") }
     var streamingUrl by remember { mutableStateOf("") }
     var category by remember { mutableStateOf("Pengajian") }
 
-    // State Waktu
     val calendar = Calendar.getInstance()
     var selectedDate by remember { mutableStateOf(calendar.time) }
     var startTime by remember { mutableStateOf("18:00") }
     var endTime by remember { mutableStateOf("20:00") }
 
-    var isLoading by remember { mutableStateOf(false) }
-
-    // Format Tanggal
     val dateFormat = SimpleDateFormat("EEEE, dd MMMM yyyy", Locale("id", "ID"))
-    val combinedCalendar = Calendar.getInstance()
 
-    // --- FUNGSI SIMPAN DATA (REUSABLE) ---
-    fun saveData(isPublished: Boolean) {
+    // Fungsi pemicu aksi simpan data via ViewModel
+    val onScheduleSaveTriggered: (Boolean) -> Unit = { isPublished ->
         if (title.isBlank() || speaker.isBlank() || location.isBlank()) {
             Toast.makeText(context, "Mohon lengkapi data utama", Toast.LENGTH_SHORT).show()
-            return
+        } else {
+            viewModel.saveSchedule(
+                title = title,
+                speaker = speaker,
+                location = location,
+                category = category,
+                streamingUrl = streamingUrl,
+                startTime = startTime,
+                endTime = endTime,
+                selectedDate = selectedDate,
+                isPublished = isPublished,
+                onSuccess = { message ->
+                    Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
+                    navController.popBackStack()
+                },
+                onError = { errorMessage ->
+                    Toast.makeText(context, "Error: $errorMessage", Toast.LENGTH_SHORT).show()
+                }
+            )
         }
-
-        isLoading = true
-
-        // Logic Timestamp
-        combinedCalendar.time = selectedDate
-        val startParts = startTime.split(":")
-        if (startParts.size == 2) {
-            combinedCalendar.set(Calendar.HOUR_OF_DAY, startParts[0].toInt())
-            combinedCalendar.set(Calendar.MINUTE, startParts[1].toInt())
-            combinedCalendar.set(Calendar.SECOND, 0)
-            combinedCalendar.set(Calendar.MILLISECOND, 0)
-        }
-
-        val newEvent = hashMapOf(
-            "title" to title,
-            "speaker" to speaker,
-            "location" to location,
-            "category" to category,
-            "streamingUrl" to streamingUrl,
-            "time" to "$startTime - $endTime",
-            "date" to Timestamp(combinedCalendar.time),
-            "participantsOnline" to emptyList<String>(),
-            "participantsOffline" to emptyList<String>(),
-            "createdAt" to Timestamp.now(),
-            "isPublished" to isPublished,
-            "isFinished" to false
-        )
-
-        firestore.collection("schedules")
-            .add(newEvent)
-            .addOnSuccessListener {
-                isLoading = false
-                val message = if (isPublished) "Jadwal berhasil ditayangkan!" else "Disimpan sebagai Draft"
-                Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
-                navController.popBackStack()
-            }
-            .addOnFailureListener { e ->
-                isLoading = false
-                Toast.makeText(context, "Error: ${e.message}", Toast.LENGTH_SHORT).show()
-            }
     }
 
     Scaffold(
@@ -275,9 +250,8 @@ fun AddScheduleScreen(navController: NavController) {
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(16.dp)
                 ) {
-                    // --- TOMBOL 1: SIMPAN DRAFT ---
                     OutlinedButton(
-                        onClick = { saveData(isPublished = false) },
+                        onClick = { onScheduleSaveTriggered(false) }, // Simpan Draft
                         modifier = Modifier
                             .weight(1f)
                             .height(54.dp),
@@ -290,9 +264,8 @@ fun AddScheduleScreen(navController: NavController) {
                         Text("Draft", fontWeight = FontWeight.Bold)
                     }
 
-                    // --- TOMBOL 2: PUBLIKASIKAN SEKARANG ---
                     Button(
-                        onClick = { saveData(isPublished = true) },
+                        onClick = { onScheduleSaveTriggered(true) }, // Publikasikan Sekarang
                         modifier = Modifier
                             .weight(1f)
                             .height(54.dp)
@@ -312,8 +285,6 @@ fun AddScheduleScreen(navController: NavController) {
     }
 }
 
-// --- KOMPONEN PENDUKUNG TETAP SAMA ---
-// (PremiumTextField dan TimePickerCard yang sudah Anda buat sebelumnya)
 @Composable
 fun PremiumTextField(
     value: String,

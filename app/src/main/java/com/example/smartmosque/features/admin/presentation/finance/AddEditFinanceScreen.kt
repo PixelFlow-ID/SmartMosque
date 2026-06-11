@@ -1,4 +1,4 @@
-package com.example.smartmosque.features.finance
+package com.example.smartmosque.features.admin.presentation.finance
 
 import android.widget.Toast
 import androidx.compose.foundation.background
@@ -30,7 +30,7 @@ import com.google.firebase.Timestamp
 @Composable
 fun AddEditFinanceScreen(
     navController: NavController,
-    financeViewModel: FinanceViewModel,
+    financeViewModel: AdminFinanceViewModel,
     authViewModel: AuthViewModel,
     transactionId: String? = null
 ) {

@@ -20,7 +20,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavController
-import com.example.smartmosque.features.donation.WaqfViewModel
+import com.example.smartmosque.features.donation.presentation.WaqfViewModel
 import com.example.smartmosque.ui.theme.Screen
 
 // --- IMPORT WARNA DARI THEME ---

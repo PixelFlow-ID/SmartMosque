@@ -5,6 +5,7 @@ import androidx.navigation.NavGraphBuilder
 import androidx.navigation.NavType
 import androidx.navigation.compose.composable
 import androidx.navigation.navArgument
+import com.example.smartmosque.features.admin.presentation.waqf.AddWaqfProgramScreen
 import com.example.smartmosque.features.auth.AuthViewModel
 import com.example.smartmosque.ui.theme.Screen
 
