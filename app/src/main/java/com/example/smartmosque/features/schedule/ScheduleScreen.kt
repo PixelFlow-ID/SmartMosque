@@ -37,6 +37,7 @@ import com.example.smartmosque.features.auth.AuthViewModel
 import com.example.smartmosque.model.Schedule
 import com.example.smartmosque.ui.theme.Screen
 import java.text.SimpleDateFormat
+import java.util.Calendar
 import java.util.Date
 import java.util.Locale
 
@@ -53,7 +54,7 @@ import com.example.smartmosque.ui.theme.RedError
 fun ScheduleScreen(
     navController: NavController,
     authViewModel: AuthViewModel,
-    scheduleViewModel: ScheduleViewModel = viewModel() // Panggil ViewModel di sini
+    scheduleViewModel: ScheduleViewModel = viewModel()
 ) {
     val context = LocalContext.current
     val userRole by authViewModel.userRole.collectAsState()
@@ -62,7 +63,7 @@ fun ScheduleScreen(
 
     val isAdmin = userRole?.trim()?.equals("admin", ignoreCase = true) == true
 
-    // Ambil Data dari ViewModel (Bukan direct Firebase lagi)
+    // Ambil Data dari ViewModel (Bukan direct Firebase)
     val scheduleList by scheduleViewModel.schedules.collectAsState()
     val isLoading by scheduleViewModel.isLoading.collectAsState()
 
@@ -72,16 +73,43 @@ fun ScheduleScreen(
 
     val todayDate = remember { SimpleDateFormat("EEEE, d MMMM yyyy", Locale("id", "ID")).format(Date()) }
 
-    // --- LOGIKA FILTER (Tetap dipertahankan di UI karena ini manipulasi state tampilan) ---
+    // --- LOGIKA FILTER TERBARU (PRESISI MEMBACA JAM DAN TANGGAL) ---
     val filteredList = remember(scheduleList, selectedFilter, isAdmin) {
-        val threeHoursInMillis = 3 * 60 * 60 * 1000
-        val cutoffTime = Date(System.currentTimeMillis() - threeHoursInMillis)
+        val currentTime = System.currentTimeMillis()
 
-        val timeFiltered = when (selectedFilter) {
-            "Akan Datang" -> scheduleList.filter { !it.isFinished && it.date?.toDate()?.after(cutoffTime) == true }
-            "Selesai" -> scheduleList.filter { it.isFinished || it.date?.toDate()?.before(cutoffTime) == true }.sortedByDescending { it.date }
-            else -> scheduleList
+        val timeFiltered = scheduleList.filter { schedule ->
+            val dateObj = schedule.date?.toDate()
+            val finalEventTime = if (dateObj != null) {
+                // Gabungkan tanggal dari Firebase dengan string jam ("04:50")
+                val calendar = Calendar.getInstance().apply { time = dateObj }
+                try {
+                    // Ambil jam awal sebelum tanda strip "-" (misal "04:50 - 06:00" -> "04:50")
+                    val hourStart = schedule.time.split("-")[0].trim()
+                    val timeParts = hourStart.split(":")
+                    calendar.set(Calendar.HOUR_OF_DAY, timeParts[0].toInt())
+                    calendar.set(Calendar.MINUTE, timeParts[1].toInt())
+                } catch (e: Exception) {
+                    calendar.set(Calendar.HOUR_OF_DAY, 0)
+                    calendar.set(Calendar.MINUTE, 0)
+                }
+                calendar.timeInMillis
+            } else {
+                0L
+            }
+
+            // Batas toleransi: Event dianggap berakhir 2 jam setelah waktu mulai kajian
+            val isTimeOver = currentTime > (finalEventTime + (2 * 60 * 60 * 1000))
+
+            when (selectedFilter) {
+                "Akan Datang" -> !schedule.isFinished && !isTimeOver
+                "Selesai" -> schedule.isFinished || isTimeOver
+                else -> true // Pilihan filter "Semua" untuk Admin
+            }
+        }.run {
+            // Urutan sorting: "Akan Datang" dari paling dekat, "Selesai" dari paling baru berlalu
+            if (selectedFilter == "Selesai") sortedByDescending { it.date } else sortedBy { it.date }
         }
+
         if (isAdmin) timeFiltered else timeFiltered.filter { it.isPublished }
     }
 
@@ -175,8 +203,7 @@ fun ScheduleScreen(
                                             userId = userId,
                                             isJoined = isJoined,
                                             onSuccess = { msg ->
-                                                Toast.makeText(context, msg, Toast.LENGTH_SHORT)
-                                                    .show()
+                                                Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
                                             }
                                         )
                                     }
@@ -185,7 +212,7 @@ fun ScheduleScreen(
                                     scheduleViewModel.toggleReminder(
                                         context = context,
                                         schedule = schedule,
-                                        isReminderActive = activeStatus, // Sekarang dinamis mengikuti ketukan jari user
+                                        isReminderActive = activeStatus,
                                         onResult = { message ->
                                             Toast.makeText(context, message, Toast.LENGTH_LONG).show()
                                         }
@@ -265,17 +292,29 @@ fun CleanScheduleCard(
     onPublish: () -> Unit,
     onMarkAsFinished: () -> Unit,
     onJoinToggle: () -> Unit,
-    onReminderClick: (Boolean) -> Unit // MODIFIKASI: Mengirimkan status boolean ke Screen utama
+    onReminderClick: (Boolean) -> Unit
 ) {
-    // State lokal untuk memantau apakah pengingat untuk jadwal ini aktif atau tidak di HP user
     var isReminderActive by remember { mutableStateOf(false) }
 
-    // Mengamankan pembacaan date dari Firebase model (jika tipe aslinya Timestamp atau Date)
     val dateObj = try {
-        // Asumsi properti .date di kelas model kamu adalah com.google.firebase.Timestamp
         schedule.date?.toDate() ?: Date()
     } catch (e: Exception) {
-        Date() // Fallback aman jika data kosong
+        Date()
+    }
+
+    // Rekonstruksi waktu penuh (Tanggal + Jam mulai kajian)
+    val finalEventTime = remember(dateObj, schedule.time) {
+        val calendar = Calendar.getInstance().apply { time = dateObj }
+        try {
+            val hourStart = schedule.time.split("-")[0].trim()
+            val timeParts = hourStart.split(":")
+            calendar.set(Calendar.HOUR_OF_DAY, timeParts[0].toInt())
+            calendar.set(Calendar.MINUTE, timeParts[1].toInt())
+        } catch (e: Exception) {
+            calendar.set(Calendar.HOUR_OF_DAY, 0)
+            calendar.set(Calendar.MINUTE, 0)
+        }
+        calendar.timeInMillis
     }
 
     val dayStr = SimpleDateFormat("dd", Locale("id", "ID")).format(dateObj)
@@ -285,11 +324,11 @@ fun CleanScheduleCard(
     val isFinished = schedule.isFinished
 
     val currentTime = System.currentTimeMillis()
-    val eventTime = dateObj.time
-    val threeHoursMs = 3 * 60 * 60 * 1000
+    val twoHoursMs = 2 * 60 * 60 * 1000
 
-    val isEventEnded = isFinished || (currentTime > (eventTime + threeHoursMs))
-    val isLive = isPublished && !isEventEnded && (eventTime <= currentTime)
+    // Evaluasi status dinamis berdasarkan gabungan jam aslinya
+    val isEventEnded = isFinished || (currentTime > (finalEventTime + twoHoursMs))
+    val isLive = isPublished && !isEventEnded && (currentTime >= finalEventTime)
 
     val infiniteTransition = rememberInfiniteTransition(label = "pulse")
     val pulseAlpha by if (isLive) infiniteTransition.animateFloat(
@@ -394,7 +433,6 @@ fun CleanScheduleCard(
                 } else {
                     Text("$totalAttendees akan hadir", fontSize = 12.sp, color = TextColorSecondary)
                     Row {
-                        // PERBAIKAN: Tombol lonceng akan berubah warna jika isReminderActive bernilai true
                         FilledIconButton(
                             onClick = {
                                 isReminderActive = !isReminderActive

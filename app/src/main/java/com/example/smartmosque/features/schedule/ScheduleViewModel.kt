@@ -43,23 +43,37 @@ class ScheduleViewModel : ViewModel() {
     }
 
     private fun filterSchedulesForHome(list: List<Schedule>): List<Schedule> {
-        val now = Date()
+        val currentTime = System.currentTimeMillis()
         val calendarNow = Calendar.getInstance()
         val currentMonth = calendarNow.get(Calendar.MONTH)
         val currentYear = calendarNow.get(Calendar.YEAR)
 
         return list.filter { schedule ->
-            val eventDate = schedule.date?.toDate()
-            if (eventDate != null) {
-                val calendarEvent = Calendar.getInstance().apply { time = eventDate }
+            val dateObj = schedule.date?.toDate()
+            if (dateObj != null) {
+                val calendarEvent = Calendar.getInstance().apply { time = dateObj }
+
+                // Cek apakah bulan dan tahun cocok
                 val isSameMonth = calendarEvent.get(Calendar.MONTH) == currentMonth &&
                         calendarEvent.get(Calendar.YEAR) == currentYear
 
-                !schedule.isFinished && eventDate.after(now) && isSameMonth
+                // Racik jam mulainya agar akurat
+                val finalEventTime = try {
+                    val hourStart = schedule.time.split("-")[0].trim()
+                    val timeParts = hourStart.split(":")
+                    calendarEvent.set(Calendar.HOUR_OF_DAY, timeParts[0].toInt())
+                    calendarEvent.set(Calendar.MINUTE, timeParts[1].toInt())
+                    calendarEvent.timeInMillis
+                } catch (e: Exception) {
+                    calendarEvent.timeInMillis
+                }
+
+                // Aturan masuk Home: Belum kelar manual, waktu belum lewat, dan bulan ini
+                !schedule.isFinished && currentTime < finalEventTime && isSameMonth
             } else {
                 false
             }
-        }.take(3)
+        }.sortedBy { it.date }.take(3)
     }
 
     fun toggleJoin(scheduleId: String, userId: String, isJoined: Boolean, onSuccess: (String) -> Unit, onError: (String) -> Unit = {}) {
