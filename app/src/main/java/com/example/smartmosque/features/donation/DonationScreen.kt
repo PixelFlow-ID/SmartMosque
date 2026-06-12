@@ -139,6 +139,9 @@ fun DonationScreen(
                                     onSuccess = { Toast.makeText(context, "Program berhasil dihapus", Toast.LENGTH_SHORT).show() },
                                     onError = { err -> Toast.makeText(context, err, Toast.LENGTH_SHORT).show() }
                                 )
+                            },
+                            onEdit = {
+                                navController.navigate("edit_waqf/${project.id}")
                             }
                         )
                     }

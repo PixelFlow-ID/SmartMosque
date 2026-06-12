@@ -8,6 +8,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Verified
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -39,7 +40,8 @@ fun PremiumWaqfCard(
     project: WaqfProject,
     isAdmin: Boolean,
     onClick: () -> Unit,
-    onDelete: () -> Unit
+    onDelete: () -> Unit,
+    onEdit: () -> Unit
 ) {
     val progressRaw = if (project.targetAmount > 0) project.collectedAmount.toDouble() / project.targetAmount.toDouble() else 0.0
     val progressPercent = (progressRaw * 100).toInt().coerceIn(0, 100)
@@ -60,28 +62,62 @@ fun PremiumWaqfCard(
         Column {
             Box(modifier = Modifier.fillMaxWidth().height(190.dp)) {
                 if (project.imageUrl.isNotEmpty()) {
-                    AsyncImage(model = project.imageUrl, contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
+                    AsyncImage(
+                        model = project.imageUrl,
+                        contentDescription = null,
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier.fillMaxSize()
+                    )
                 } else {
-                    Box(modifier = Modifier.fillMaxSize().background(Color(0xFFF0FDF4)), contentAlignment = Alignment.Center) {
+                    Box(
+                        modifier = Modifier.fillMaxSize().background(Color(0xFFF0FDF4)),
+                        contentAlignment = Alignment.Center
+                    ) {
                         Icon(Icons.Default.Verified, null, tint = EmeraldDeep.copy(alpha = 0.3f), modifier = Modifier.size(64.dp))
                     }
                 }
 
                 Surface(
                     modifier = Modifier.padding(16.dp).align(Alignment.BottomEnd),
-                    shape = RoundedCornerShape(12.dp), color = White, shadowElevation = 6.dp
+                    shape = RoundedCornerShape(12.dp),
+                    color = White,
+                    shadowElevation = 6.dp
                 ) {
-                    Row(modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
                         Text(text = "$progressPercent%", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = EmeraldDeep)
                     }
                 }
 
+                // --- TOMBOL EDIT & DELETE KHUSUS ADMIN ---
                 if (isAdmin) {
-                    Surface(
-                        modifier = Modifier.padding(12.dp).align(Alignment.TopEnd).clickable { onDelete() },
-                        shape = CircleShape, color = White.copy(alpha = 0.9f), shadowElevation = 4.dp
+                    Row(
+                        modifier = Modifier
+                            .align(Alignment.TopEnd)
+                            .padding(12.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        Icon(Icons.Default.Delete, null, tint = RedError, modifier = Modifier.padding(8.dp).size(20.dp))
+                        // Tombol Edit
+                        Surface(
+                            modifier = Modifier.clickable { onEdit() },
+                            shape = CircleShape,
+                            color = White.copy(alpha = 0.9f),
+                            shadowElevation = 4.dp
+                        ) {
+                            Icon(Icons.Default.Edit, null, tint = EmeraldDeep, modifier = Modifier.padding(8.dp).size(20.dp))
+                        }
+
+                        // Tombol Delete
+                        Surface(
+                            modifier = Modifier.clickable { onDelete() },
+                            shape = CircleShape,
+                            color = White.copy(alpha = 0.9f),
+                            shadowElevation = 4.dp
+                        ) {
+                            Icon(Icons.Default.Delete, null, tint = RedError, modifier = Modifier.padding(8.dp).size(20.dp))
+                        }
                     }
                 }
             }

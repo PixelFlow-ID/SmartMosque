@@ -41,6 +41,8 @@ import com.example.smartmosque.features.schedule.ScheduleDetailScreen
 import com.example.smartmosque.features.admin.presentation.schedule.AddScheduleScreen
 import com.example.smartmosque.features.admin.presentation.schedule.AdminScheduleViewModel
 import com.example.smartmosque.features.admin.presentation.schedule.EditScheduleScreen
+import com.example.smartmosque.features.admin.presentation.waqf.AdminViewModel
+import com.example.smartmosque.features.admin.presentation.waqf.EditWaqfScreen
 import com.example.smartmosque.features.notification.NotificationScreen
 import com.example.smartmosque.features.profile.ProfileDetailScreen
 import com.example.smartmosque.features.profile.EditProfileScreen
@@ -218,6 +220,22 @@ fun AppNavigation() {
                     navController = navController,
                     scheduleId = scheduleId,
                     viewModel = adminScheduleViewModel
+                )
+            }
+
+            // --- TAMBAHAN BARU: EDIT PROGRAM WAKAF (KHUSUS ADMIN) ---
+            composable(
+                route = "edit_waqf/{programId}",
+                arguments = listOf(navArgument("programId") { type = NavType.StringType })
+            ) { backStackEntry ->
+                val programId = backStackEntry.arguments?.getString("programId") ?: ""
+                // Hidupkan scope ViewModel Admin Wakaf secara mandiri di screen ini
+                val adminWaqfViewModel: AdminViewModel = viewModel()
+
+                EditWaqfScreen(
+                    navController = navController,
+                    programId = programId,
+                    viewModel = adminWaqfViewModel
                 )
             }
 
