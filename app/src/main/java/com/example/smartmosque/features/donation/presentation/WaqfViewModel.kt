@@ -59,22 +59,25 @@ class WaqfViewModel : ViewModel() {
 
     // 2. Ambil Daftar Program Wakaf dari Firestore (Penyembuh Error di DonationScreen)
     fun fetchWaqfProjects() {
-        viewModelScope.launch {
-            _isLoading.value = true
-            try {
-                val snapshot = FirebaseFirestore.getInstance().collection("waqf_programs").get().await()
+        _isLoading.value = true
 
-                // Mapping dokumen Firestore ke Objek Model beserta ID Dokumennya
-                val projects = snapshot.documents.mapNotNull { doc ->
-                    doc.toObject(WaqfProject::class.java)?.copy(id = doc.id)
+        // Menggunakan snapshot listener agar perubahan dana terkumpul langsung memantul ke Card depan
+        FirebaseFirestore.getInstance().collection("waqf_programs")
+            .addSnapshotListener { snapshot, error ->
+                if (error != null) {
+                    _waqfProjects.value = emptyList()
+                    _isLoading.value = false
+                    return@addSnapshotListener
                 }
-                _waqfProjects.value = projects
-            } catch (e: Exception) {
-                _waqfProjects.value = emptyList()
-            } finally {
+
+                if (snapshot != null) {
+                    val projects = snapshot.documents.mapNotNull { doc ->
+                        doc.toObject(WaqfProject::class.java)?.copy(id = doc.id)
+                    }
+                    _waqfProjects.value = projects
+                }
                 _isLoading.value = false
             }
-        }
     }
 
     // 3. Proses Kompresi dan Kirim Bukti Infaq Jamaah

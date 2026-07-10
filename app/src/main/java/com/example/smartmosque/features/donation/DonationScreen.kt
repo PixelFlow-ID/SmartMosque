@@ -7,6 +7,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.DeleteForever // Import ikon hapus
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -21,12 +22,15 @@ import androidx.navigation.NavController
 
 // --- IMPORT DARI AUTH & MVVM DONATION REFACTORED ---
 import com.example.smartmosque.features.auth.AuthState
-
 import com.example.smartmosque.features.auth.AuthViewModel
 import com.example.smartmosque.features.donation.presentation.WaqfViewModel
 import com.example.smartmosque.features.donation.components.*
 import com.example.smartmosque.features.home.InfaqCategoryHome
+import com.example.smartmosque.model.WaqfProject // Import Model Project Wakaf
 import com.example.smartmosque.ui.theme.Screen
+
+// --- IMPORT DIALOG GLOBAL BARU ---
+import com.example.smartmosque.ui.components.PremiumConfirmationDialog
 
 // --- IMPORT WARNA TEMA ---
 import com.example.smartmosque.ui.theme.EmeraldDeep
@@ -58,6 +62,10 @@ fun DonationScreen(
     var showPaymentDialog by remember { mutableStateOf(false) }
     var selectedCategory by remember { mutableStateOf<InfaqCategoryHome?>(null) }
     var inputAmount by remember { mutableLongStateOf(0L) }
+
+    // --- STATE UNTUK DIALOG KONFIRMASI HAPUS WAKAF ---
+    var showDeleteDialog by remember { mutableStateOf(false) }
+    var projectToDelete by remember { mutableStateOf<WaqfProject?>(null) }
 
     Scaffold(
         containerColor = BgPremium,
@@ -126,7 +134,6 @@ fun DonationScreen(
             } else if (waqfList.isEmpty()) {
                 item { EmptyStateDonation() }
             } else {
-                // Sekarang aman digunakan karena import lazy.items sudah ditambahkan di atas
                 items(waqfList) { project ->
                     Box(modifier = Modifier.padding(horizontal = 24.dp, vertical = 10.dp)) {
                         PremiumWaqfCard(
@@ -134,11 +141,9 @@ fun DonationScreen(
                             isAdmin = isAdmin,
                             onClick = { navController.navigate(Screen.createRoute(project.id)) },
                             onDelete = {
-                                viewModel.deleteProject(
-                                    projectId = project.id,
-                                    onSuccess = { Toast.makeText(context, "Program berhasil dihapus", Toast.LENGTH_SHORT).show() },
-                                    onError = { err -> Toast.makeText(context, err, Toast.LENGTH_SHORT).show() }
-                                )
+                                // 🎯 Tahan data project yang di-klik & pemicu dialog muncul
+                                projectToDelete = project
+                                showDeleteDialog = true
                             },
                             onEdit = {
                                 navController.navigate("edit_waqf/${project.id}")
@@ -175,8 +180,39 @@ fun DonationScreen(
                 onSuccess = {
                     showPaymentDialog = false
                     Toast.makeText(context, "Alhamdulillah, bukti terkirim!", Toast.LENGTH_LONG).show()
+                    viewModel.fetchWaqfProjects()
                 }
             )
         }
+
+        // 🎯 PREMIUM REUSABLE DIALOG UNTUK KONFIRMASI HAPUS WAKAF
+        PremiumConfirmationDialog(
+            showDialog = showDeleteDialog,
+            onDismiss = {
+                showDeleteDialog = false
+                projectToDelete = null // Bersihkan state setelah ditutup
+            },
+            title = "Hapus Program Wakaf?",
+            description = "Apakah Anda yakin ingin menghapus program \"${projectToDelete?.title}\"? Tindakan ini permanen dan tidak bisa dikembalikan.",
+            confirmButtonText = "Ya, Hapus Permanen",
+            dismissButtonText = "Batal",
+            icon = Icons.Default.DeleteForever,
+            iconColor = Color(0xFFEF4444),
+            iconBgColor = Color(0xFFFEE2E2),
+            confirmButtonColor = Color(0xFFEF4444),
+            onConfirm = {
+                projectToDelete?.let { project ->
+                    viewModel.deleteProject(
+                        projectId = project.id,
+                        onSuccess = {
+                            Toast.makeText(context, "Program berhasil dihapus", Toast.LENGTH_SHORT).show()
+                        },
+                        onError = { err ->
+                            Toast.makeText(context, err, Toast.LENGTH_SHORT).show()
+                        }
+                    )
+                }
+            }
+        )
     }
 }

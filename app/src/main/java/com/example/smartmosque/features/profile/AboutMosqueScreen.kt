@@ -45,7 +45,7 @@ import com.example.smartmosque.ui.theme.White
 import com.example.smartmosque.ui.theme.TextColorPrimary
 import com.example.smartmosque.ui.theme.TextColorSecondary
 
-@SuppressLint("UnusedMaterial3ScaffoldPaddingParameter") // <--- SOLUSI AGAR TIDAK MERAH
+@SuppressLint("UnusedMaterial3ScaffoldPaddingParameter")
 @Composable
 fun AboutMosqueScreen(
     navController: NavController,
@@ -61,7 +61,7 @@ fun AboutMosqueScreen(
         contentWindowInsets = WindowInsets(0.dp)
     ) { _ -> // Ganti paddingValues dengan _ (underscore) agar lebih rapi
 
-        // Kita ignore paddingValues (_) agar gambar bisa tembus ke status bar (Immersive)
+        // Ignore paddingValues (_) agar gambar bisa tembus ke status bar (Immersive)
         Box(modifier = Modifier.fillMaxSize()) {
 
             if (isLoading) {
